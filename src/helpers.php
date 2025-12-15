@@ -1,7 +1,6 @@
 <?php
 
 use ApolloPHP\Core\Application;
-use ApolloPHP\Core\Container;
 
 if (!function_exists('app')) {
     function app(?string $abstract = null, array $parameters = [])
@@ -102,6 +101,10 @@ if (!function_exists('abort')) {
 if (!function_exists('response')) {
     function response($content = '', int $status = 200, array $headers = []): \ApolloPHP\Http\Response
     {
+        if (is_array($content)) {
+            return \ApolloPHP\Http\Response::json($content, $status, $headers);
+        }
+        
         return new \ApolloPHP\Http\Response($content, $status, $headers);
     }
 }
@@ -110,5 +113,48 @@ if (!function_exists('json')) {
     function json($data, int $status = 200, array $headers = []): \ApolloPHP\Http\JsonResponse
     {
         return new \ApolloPHP\Http\JsonResponse($data, $status, $headers);
+    }
+}
+
+if (!function_exists('data_get')) {
+    function data_get($target, $key, $default = null)
+    {
+        if (is_null($key)) {
+            return $target;
+        }
+        
+        $key = is_array($key) ? $key : explode('.', $key);
+        
+        foreach ($key as $i => $segment) {
+            unset($key[$i]);
+            
+            if (is_null($segment)) {
+                return $target;
+            }
+            
+            if ($segment === '*') {
+                if (!is_array($target)) {
+                    return value($default);
+                }
+                
+                $result = [];
+                
+                foreach ($target as $item) {
+                    $result[] = data_get($item, $key);
+                }
+                
+                return in_array('*', $key) ? \ApolloPHP\Support\Arr::flatten($result) : $result;
+            }
+            
+            if (\ApolloPHP\Support\Arr::accessible($target) && \ApolloPHP\Support\Arr::exists($target, $segment)) {
+                $target = $target[$segment];
+            } elseif (is_object($target) && isset($target->{$segment})) {
+                $target = $target->{$segment};
+            } else {
+                return value($default);
+            }
+        }
+        
+        return $target;
     }
 }

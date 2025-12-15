@@ -15,9 +15,6 @@
             "email": "ricardo.mexan@hotmail.com"
         }
     ],
-    "files": [
-        "src/Support/helpers.php"
-    ],
     "require-dev": {
         "phpunit/phpunit": "^12.5.4",
         "mockery/mockery": "^1.6.12",

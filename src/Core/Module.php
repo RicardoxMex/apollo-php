@@ -85,13 +85,14 @@ class Module
         $routesFile = $this->path . '/routes.php';
 
         if (file_exists($routesFile)) {
-            $prefix = $this->config['prefix'] ?? "/api/{$this->name}";
-            $middleware = $this->config['middleware'] ?? [];
+            $routeConfig = $this->config['routes'] ?? [];
+            $prefix = $routeConfig['prefix'] ?? "/api/{$this->name}";
+            $middleware = $routeConfig['middleware'] ?? [];
 
             $this->app->group([
                 'prefix' => $prefix,
                 'middleware' => $middleware,
-            ], function () use ($routesFile) {
+            ], function ($router) use ($routesFile) {
                 require $routesFile;
             });
         }

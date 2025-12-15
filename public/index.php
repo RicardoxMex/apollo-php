@@ -2,11 +2,11 @@
 
 require __DIR__ . '/../vendor/autoload.php';
 
+use ApolloPHP\Http\Response;
+use ApolloPHP\Exceptions\HttpException;
+
 $app = new ApolloPHP\Core\Application(dirname(__DIR__));
 
-// Add a simple test route
-$app->get('/', function($request) {
-    return new ApolloPHP\Http\Response('Hello, ApolloPHP Framework!');
-});
+ $app->module('ApolloAuth');
 
 $app->run();

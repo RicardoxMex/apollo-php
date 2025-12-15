@@ -27,7 +27,7 @@ class Kernel
         try {
             $response = $this->sendRequestThroughRouter($request);
         } catch (HttpException $e) {
-            $response = $this->renderHttpException($e);
+            $response = $this->renderHttpException($e, $request);
         } catch (Throwable $e) {
             $response = $this->renderException($request, $e);
         }
@@ -88,15 +88,20 @@ class Kernel
         return $this->routeMiddleware;
     }
     
-    protected function renderHttpException(HttpException $e): Response
+    protected function renderHttpException(HttpException $e, ?Request $request = null): Response
     {
-        return new Response(
-            json_encode([
+        if ($request && $this->shouldReturnJson($request)) {
+            return Response::json([
                 'error' => $e->getMessage(),
                 'code' => $e->getStatusCode(),
-            ]),
+            ], $e->getStatusCode());
+        }
+        
+        // Return HTML response for non-JSON requests
+        return new Response(
+            $this->getErrorHtml($e->getMessage(), $e->getStatusCode()),
             $e->getStatusCode(),
-            ['Content-Type' => 'application/json']
+            ['Content-Type' => 'text/html']
         );
     }
     
@@ -107,13 +112,57 @@ class Kernel
             ? $e->getMessage() 
             : 'Internal Server Error';
         
-        return new Response(
-            json_encode([
+        if ($this->shouldReturnJson($request)) {
+            $data = [
                 'error' => $message,
                 'code' => $status,
-            ]),
+            ];
+            
+            // Add debug information if in debug mode
+            if ($this->container->make('app')->isDebugMode()) {
+                $data['debug'] = [
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine(),
+                    'trace' => $e->getTraceAsString(),
+                ];
+            }
+            
+            return Response::json($data, $status);
+        }
+        
+        // Return HTML response for non-JSON requests
+        return new Response(
+            $this->getErrorHtml($message, $status),
             $status,
-            ['Content-Type' => 'application/json']
+            ['Content-Type' => 'text/html']
         );
+    }
+    
+    protected function shouldReturnJson(Request $request): bool
+    {
+        return $request->expectsJson() || 
+               $request->isJson() || 
+               $request->getHeaderLine('Content-Type') === 'application/json';
+    }
+    
+    protected function getErrorHtml(string $message, int $status): string
+    {
+        return "<!DOCTYPE html>
+<html>
+<head>
+    <title>Error {$status}</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 40px; }
+        .error { background: #f8f8f8; padding: 20px; border-left: 4px solid #e74c3c; }
+        h1 { color: #e74c3c; margin: 0 0 10px 0; }
+    </style>
+</head>
+<body>
+    <div class='error'>
+        <h1>Error {$status}</h1>
+        <p>" . htmlspecialchars($message) . "</p>
+    </div>
+</body>
+</html>";
     }
 }
