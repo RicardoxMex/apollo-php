@@ -236,9 +236,8 @@ class Request implements RequestInterface
     
     public function all(): array
     {
-        return [...$this->query, ...$this->post];
+        return (object) [...$this->query, ...$this->post];
     }
-    
     public function only(array $keys): array
     {
         $data = $this->all();

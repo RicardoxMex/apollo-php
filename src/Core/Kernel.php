@@ -108,9 +108,13 @@ class Kernel
     protected function renderException(Request $request, Throwable $e): Response
     {
         $status = $e instanceof HttpException ? $e->getStatusCode() : 500;
-        $message = $this->container->make('app')->isDebugMode() 
-            ? $e->getMessage() 
-            : 'Internal Server Error';
+        
+        // Verificar si estamos en modo debug
+        $app = $this->container->make('app');
+        $isDebug = $app->isDebugMode();
+        
+        
+        $message = $isDebug ? $e->getMessage() : 'Internal Server Error';
         
         if ($this->shouldReturnJson($request)) {
             $data = [
@@ -119,7 +123,7 @@ class Kernel
             ];
             
             // Add debug information if in debug mode
-            if ($this->container->make('app')->isDebugMode()) {
+            if ($isDebug) {
                 $data['debug'] = [
                     'file' => $e->getFile(),
                     'line' => $e->getLine(),

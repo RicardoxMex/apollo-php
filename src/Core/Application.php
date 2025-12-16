@@ -30,10 +30,13 @@ class Application
         // Inicializar componentes básicos primero
         $this->initializeCoreComponents();
 
-        // Cargar configuración
+        // Cargar variables de entorno ANTES de la configuración
+        $this->loadEnvironmentVariables();
+
+        // Cargar configuración (después de tener las variables de entorno)
         $this->loadConfiguration();
 
-        // Inicializar entorno (después de tener config)
+        // Inicializar entorno (configurar error reporting, timezone, etc.)
         $this->initializeEnvironment();
 
         // Registrar bindings básicos
@@ -49,11 +52,14 @@ class Application
         return static::$instance;
     }
 
-    protected function initializeEnvironment(): void
+    protected function loadEnvironmentVariables(): void
     {
         // Cargar variables de entorno
         Env::load($this->basePath);
+    }
 
+    protected function initializeEnvironment(): void
+    {
         // Configurar manejo de errores
         if ($this->isDebugMode()) {
             error_reporting(E_ALL);

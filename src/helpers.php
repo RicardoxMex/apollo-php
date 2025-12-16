@@ -8,7 +8,7 @@ if (!function_exists('app')) {
         if ($abstract === null) {
             return Application::getInstance();
         }
-        
+
         return Application::getInstance()->make($abstract, $parameters);
     }
 }
@@ -19,7 +19,7 @@ if (!function_exists('config')) {
         if ($key === null) {
             return app('config');
         }
-        
+
         return app('config')->get($key, $default);
     }
 }
@@ -28,11 +28,11 @@ if (!function_exists('env')) {
     function env(string $key, $default = null)
     {
         $value = getenv($key);
-        
+
         if ($value === false) {
             return value($default);
         }
-        
+
         switch (strtolower($value)) {
             case 'true':
             case '(true)':
@@ -47,11 +47,11 @@ if (!function_exists('env')) {
             case '(null)':
                 return null;
         }
-        
+
         if (str_starts_with($value, '"') && str_ends_with($value, '"')) {
             return substr($value, 1, -1);
         }
-        
+
         return $value;
     }
 }
@@ -104,7 +104,7 @@ if (!function_exists('response')) {
         if (is_array($content)) {
             return \ApolloPHP\Http\Response::json($content, $status, $headers);
         }
-        
+
         return new \ApolloPHP\Http\Response($content, $status, $headers);
     }
 }
@@ -122,30 +122,30 @@ if (!function_exists('data_get')) {
         if (is_null($key)) {
             return $target;
         }
-        
+
         $key = is_array($key) ? $key : explode('.', $key);
-        
+
         foreach ($key as $i => $segment) {
             unset($key[$i]);
-            
+
             if (is_null($segment)) {
                 return $target;
             }
-            
+
             if ($segment === '*') {
                 if (!is_array($target)) {
                     return value($default);
                 }
-                
+
                 $result = [];
-                
+
                 foreach ($target as $item) {
                     $result[] = data_get($item, $key);
                 }
-                
+
                 return in_array('*', $key) ? \ApolloPHP\Support\Arr::flatten($result) : $result;
             }
-            
+
             if (\ApolloPHP\Support\Arr::accessible($target) && \ApolloPHP\Support\Arr::exists($target, $segment)) {
                 $target = $target[$segment];
             } elseif (is_object($target) && isset($target->{$segment})) {
@@ -154,7 +154,18 @@ if (!function_exists('data_get')) {
                 return value($default);
             }
         }
-        
+
         return $target;
     }
+}
+
+function dd(...$args)
+{
+    foreach ($args as $arg) {
+        echo "<pre>";
+        var_dump($arg);
+        echo "<pre>";
+    }
+
+    die();
 }
