@@ -1,75 +1,57 @@
 {
     "name": "mexancode/apollo-php",
-    "description": "Miniframework avanzado para APIs en PHP",
+    "description": "Mini-framework para APIs inspirado en Django REST Framework",
     "type": "project",
     "license": "MIT",
-    "autoload": {
-        "psr-4": {
-            "ApolloPHP\\": "src/",
-            "ApolloAuth\\": "modules/ApolloAuth/"
-        },
-        "files": ["src/helpers.php"]
-    },
     "authors": [
         {
             "name": "Ricardo Mex",
             "email": "ricardo.mexan@hotmail.com"
         }
     ],
-    "require-dev": {
-        "phpunit/phpunit": "^12.5.4",
-        "mockery/mockery": "^1.6.12",
-        "vlucas/phpdotenv": "^5.6.2",
-        "fakerphp/faker": "^1.24.1"
-    },
     "require": {
-        "php": "^8.3",
-        "ext-json": "*",
-        "ext-pdo": "*",
-        "ext-mbstring": "*",
+        "php": ">=8.3",
+        "vlucas/phpdotenv": "^5.6",
         "psr/container": "^2.0",
-        "psr/http-message": "^2.0",
-        "psr/http-server-handler": "^1.0",
-        "psr/http-server-middleware": "^1.0",
-        "psr/log": "^3.0",
-        "firebase/php-jwt": "^6.0",
-        "ramsey/uuid": "^4.0",
-        "nesbot/carbon": "^2.0"
+        "psr/http-message": "^1.0",
+        "psr/http-server-handler": "^1.0"
+    },
+    "require-dev": {
+        "phpunit/phpunit": "^10.5",
+        "mockery/mockery": "^1.6"
+    },
+    "autoload": {
+        "psr-4": {
+            "Apollo\\Core\\": "core/",
+            "Apps\\": "apps/"
+        },
+        "files": [
+            "core/Support/helpers.php"
+        ]
+    },
+    "autoload-dev": {
+        "psr-4": {
+            "Tests\\": "tests/"
+        }
     },
     "scripts": {
-        "post-install-cmd": [
-            "@php -r \"if (!file_exists('.env') && file_exists('.env.example')) { copy('.env.example', '.env'); }\"",
-            "@php -r \"mkdir('storage/logs', 0777, true);\"",
-            "@php -r \"mkdir('storage/cache', 0777, true);\""
+        "post-autoload-dump": [
+            "@php -r \"if (file_exists('core/Support/helpers.php')) { require 'core/Support/helpers.php'; }\""
         ],
-        "post-update-cmd": [
-            "@php -r \"if(file_exists('storage/framework/compiled.php')) unlink('storage/framework/compiled.php');\""
+        "post-create-project-cmd": [
+            "@php -r \"copy('.env.example', '.env');\"",
+            "@php -r \"file_exists('public/index.php') || mkdir('public', 0755, true);\"",
+            "@php core/Console/Commands/InstallCommand.php"
         ],
         "test": "phpunit",
-        "test-coverage": "phpunit --coverage-html coverage",
-        "lint": "phpcs --standard=PSR12 src tests",
-        "lint-fix": "phpcbf --standard=PSR12 src tests",
-        "analyse": "phpstan analyse --level=max src",
-        "psalm": "psalm",
-        "cs-fix": "php-cs-fixer fix src --rules=@PSR12",
-        "optimize": "composer dump-autoload -o",
-        "serve": "php -S localhost:8000 -t public",
-        "key:generate": "@php -r \"echo 'APP_KEY=' . bin2hex(random_bytes(32)) . PHP_EOL;\""
-    },
-    "scripts-descriptions": {
-        "test": "Ejecutar tests",
-        "lint": "Verificar estándar de código",
-        "analyse": "Análisis estático con PHPStan",
-        "optimize": "Optimizar autoloader",
-        "serve": "Iniciar servidor de desarrollo"
+        "start": "php -S localhost:8000 -t public"
     },
     "config": {
+        "optimize-autoloader": true,
+        "preferred-install": "dist",
         "sort-packages": true,
-        "platform": {
-            "php": "8.3.0"
-        },
-        "optimize-autoloader": true
+        "platform-check": false
     },
-    "minimum-stability": "stable",
+    "minimum-stability": "dev",
     "prefer-stable": true
 }
