@@ -109,32 +109,46 @@ class Application extends Container
             throw new Exception("App '{$appName}' not found in apps directory");
         }
 
-        error_log("🔍 Registering app: {$appName}");
+        if (!$this->isConsoleMode()) {
+            error_log("🔍 Registering app: {$appName}");
+        }
 
         // Cargar configuración de la app
         $configPath = $appPath . '/config';
         if (is_dir($configPath)) {
             $this->loadAppConfig($appName, $configPath);
-            error_log("✅ Config loaded for {$appName}");
+            if (!$this->isConsoleMode()) {
+                error_log("✅ Config loaded for {$appName}");
+            }
         }
 
         // Registrar Service Provider de la app
         $providerClass = "Apps\\{$appName}\\{$appName}ServiceProvider";
         if (class_exists($providerClass)) {
             $this->registerServiceProvider($providerClass);
-            error_log("✅ ServiceProvider registered for {$appName}");
+            if (!$this->isConsoleMode()) {
+                error_log("✅ ServiceProvider registered for {$appName}");
+            }
         } else {
-            error_log("⚠️  ServiceProvider not found: {$providerClass}");
+            if (!$this->isConsoleMode()) {
+                error_log("⚠️  ServiceProvider not found: {$providerClass}");
+            }
         }
 
         // Cargar rutas de la app
         $routesPath = $appPath . '/Routes';
         if (is_dir($routesPath)) {
-            error_log("🔍 Loading routes from: {$routesPath}");
+            if (!$this->isConsoleMode()) {
+                error_log("🔍 Loading routes from: {$routesPath}");
+            }
             $this->loadAppRoutes($appName, $routesPath);
-            error_log("✅ Routes loaded for {$appName}");
+            if (!$this->isConsoleMode()) {
+                error_log("✅ Routes loaded for {$appName}");
+            }
         } else {
-            error_log("⚠️  Routes directory not found: {$routesPath}");
+            if (!$this->isConsoleMode()) {
+                error_log("⚠️  Routes directory not found: {$routesPath}");
+            }
         }
 
         $this->loadedApps[] = $appName;
@@ -195,5 +209,10 @@ class Application extends Container
     public function version(): string
     {
         return '1.0.0-alpha';
+    }
+
+    private function isConsoleMode(): bool
+    {
+        return php_sapi_name() === 'cli';
     }
 }

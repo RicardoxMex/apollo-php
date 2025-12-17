@@ -43,6 +43,8 @@ class UsersServiceProvider extends ServiceProvider {
         // Aquí podríamos registrar middleware específico de la app
         // o configuraciones adicionales
         
-        error_log("🚀 UsersServiceProvider booted with middlewares");
+        if (php_sapi_name() !== 'cli') {
+            error_log("🚀 UsersServiceProvider booted with middlewares");
+        }
     }
 }

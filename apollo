@@ -1,0 +1,32 @@
+#!/usr/bin/env php
+<?php
+// apollo
+
+require_once __DIR__ . '/vendor/autoload.php';
+
+use Apollo\Core\Application;
+use Apollo\Core\Console\Kernel;
+
+// Crear la aplicación
+$app = new Application(__DIR__);
+
+// Cargar configuración
+$config = $app->make('config');
+$config->loadFromFile(__DIR__ . '/config/app.php');
+
+// Registrar apps
+$apps = $config->get('apps.enabled', []);
+foreach ($apps as $appName) {
+    $app->registerApp($appName);
+}
+
+// Boot service providers
+$app->bootServiceProviders();
+
+// Crear kernel de consola
+$kernel = new Kernel($app);
+
+// Ejecutar comando
+$exitCode = $kernel->handle($argv);
+
+exit($exitCode);
