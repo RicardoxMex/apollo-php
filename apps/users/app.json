@@ -4,7 +4,7 @@
     "description": "Users management app",
     "author": "Your Name",
     "providers": [
-        "Apps\\Users\\Providers\\UsersServiceProvider"
+       "Apps\\Users\\Providers\\UsersServiceProvider" 
     ],
     "routes": ["api.php"]
 }

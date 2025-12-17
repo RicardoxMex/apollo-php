@@ -26,7 +26,7 @@ class UsersServiceProvider extends ServiceProvider {
         
         // Registrar controller
         $this->container->bind(UserController::class, fn($container) => 
-            new UserController($container->make(UserService::class))
+            new UserController($container, $container->make(UserService::class))
         );
         
         // Registrar middlewares

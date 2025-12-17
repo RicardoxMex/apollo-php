@@ -22,6 +22,7 @@ class HelpCommand extends Command
         $this->line('  make:controller  Create a new controller class');
         $this->line('  make:middleware  Create a new middleware class');
         $this->line('  system:report    Generate a system report');
+        $this->line('  test             test');
         $this->line('  help             Show this help message');
         $this->line();
 

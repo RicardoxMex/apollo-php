@@ -2,28 +2,15 @@
 // apps/users/Routes/api.php
 
 use Apollo\Core\Http\Response;
+use Apps\Users\Controllers\UserController;
 
 /** @var \Apollo\Core\Router\Router $router */
 
 // Rutas públicas (sin middleware)
-$router->get('/', fn() => Response::json([
-    'data' => [
-        ['id' => 1, 'name' => 'John Doe', 'email' => 'john@example.com'],
-        ['id' => 2, 'name' => 'Jane Smith', 'email' => 'jane@example.com']
-    ],
-    'message' => 'Users retrieved successfully'
-]))->name('users.index');
+$router->get('/', [UserController::class, 'index'])->name('users.index');
 
-$router->get('/{id}', function($id) {
-    return Response::json([
-        'data' => [
-            'id' => (int)$id,
-            'name' => "User {$id}",
-            'email' => "user{$id}@example.com"
-        ],
-        'message' => 'User retrieved successfully'
-    ]);
-})->where(['id' => '\d+'])->name('users.show');
+// Ejemplo con sintaxis [Controller::class, 'method']
+$router->get('/{id}', [UserController::class, 'show'])->where(['id' => '\d+'])->name('users.show');
 
 // Ruta de prueba con logging
 $router->get('/test', fn() => Response::json([
@@ -47,53 +34,18 @@ $router->group(['middleware' => ['auth']], function($router) {
         ]);
     })->name('users.profile');
     
-    // Crear usuario (requiere autenticación)
-    $router->post('/', function() {
-        $request = app('request');
-        $user = $request->attributes['user'] ?? null;
-        
-        return Response::json([
-            'data' => [
-                'id' => rand(100, 999),
-                'name' => 'New User',
-                'email' => 'newuser@example.com',
-                'created_by' => $user['name'] ?? 'Unknown'
-            ],
-            'message' => 'User created successfully'
-        ], 201);
-    })->name('users.store');
+    // Crear usuario (requiere autenticación) - Usando sintaxis [Controller::class, 'method']
+    $router->post('/', [UserController::class, 'store'])->name('users.store');
     
-    // Actualizar usuario (requiere autenticación)
-    $router->put('/{id}', function($id) {
-        $request = app('request');
-        $user = $request->attributes['user'] ?? null;
-        
-        return Response::json([
-            'data' => [
-                'id' => (int)$id,
-                'name' => "Updated User {$id}",
-                'email' => "updated{$id}@example.com",
-                'updated_by' => $user['name'] ?? 'Unknown'
-            ],
-            'message' => 'User updated successfully'
-        ]);
-    })->where(['id' => '\d+'])->name('users.update');
+    // Actualizar usuario (requiere autenticación) - Usando sintaxis [Controller::class, 'method']
+    $router->put('/{id}', [UserController::class, 'update'])->where(['id' => '\d+'])->name('users.update');
 });
 
 // Rutas que requieren rol de administrador
 $router->group(['middleware' => ['auth', 'role.admin']], function($router) {
     
-    // Eliminar usuario (solo admin)
-    $router->delete('/{id}', function($id) {
-        $request = app('request');
-        $user = $request->attributes['user'] ?? null;
-        
-        return Response::json([
-            'message' => "User {$id} deleted successfully",
-            'deleted_by' => $user['name'] ?? 'Unknown',
-            'admin_action' => true
-        ]);
-    })->where(['id' => '\d+'])->name('users.destroy');
+    // Eliminar usuario (solo admin) - Usando sintaxis [Controller::class, 'method']
+    $router->delete('/{id}', [UserController::class, 'destroy'])->where(['id' => '\d+'])->name('users.destroy');
     
     // Estadísticas de usuarios (solo admin)
     $router->get('/stats', function() {

@@ -23,6 +23,7 @@ class Kernel
             'make:controller' => Commands\MakeControllerCommand::class,
             'make:middleware' => Commands\MakeMiddlewareCommand::class,
             'system:report' => Commands\SystemReportCommand::class,
+            'test' => Commands\TestCommand::class,
             'help' => Commands\HelpCommand::class,
         ];
     }

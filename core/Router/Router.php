@@ -44,30 +44,35 @@ class Router
 
     private function createRoute(string $method, string $uri, $action): Route
     {
+        // Si la acción es un array [Controller::class, 'method']
+        if (\is_array($action) && isset($action[0]) && isset($action[1]) && \is_string($action[0]) && \is_string($action[1])) {
+            // Convertir [Controller::class, 'method'] a formato interno
+            $controller = $action[0];
+            $methodName = $action[1];
+            $action = [$controller, $methodName];
+        }
         // Si la acción es un string, convertir a ['uses' => 'Controller@method']
-        if (\is_string($action)) {
+        elseif (\is_string($action)) {
             if (str_contains($action, '@')) {
-                [$controller, $method] = explode('@', $action);
+                [$controller, $methodName] = explode('@', $action);
                 $action = ['uses' => $action, 'controller' => $controller];
             } else {
                 $action = ['uses' => $action];
             }
         }
-
-        // Si es un array, crear ruta
-        if (\is_array($action)) {
-            $route = new Route($method, $uri, $action);
-
-            // Extraer middleware del array
-            if (isset($action['middleware'])) {
-                $route->middleware($action['middleware']);
-            }
-
-            return $route;
+        // Si es un array asociativo con middleware u otras opciones
+        elseif (\is_array($action) && isset($action['uses'])) {
+            // Ya está en el formato correcto
         }
 
-        // Si es un Closure
-        return new Route($method, $uri, $action);
+        $route = new Route($method, $uri, $action);
+
+        // Extraer middleware del array si existe
+        if (\is_array($action) && isset($action['middleware'])) {
+            $route->middleware($action['middleware']);
+        }
+
+        return $route;
     }
 
     public function get(string $uri, $action): Route
@@ -231,6 +236,18 @@ class Router
                 return $this->container->call($action, $parameters);
             }
 
+            // Si es un array [Controller::class, 'method']
+            if (\is_array($action) && isset($action[0]) && isset($action[1]) && \is_string($action[0]) && \is_string($action[1])) {
+                $controller = $action[0];
+                $method = $action[1];
+                
+                // Resolver el controlador desde el container
+                $controllerInstance = $this->container->make($controller);
+                
+                // Llamar al método del controlador
+                return $this->container->call([$controllerInstance, $method], $parameters);
+            }
+
             // Si es un array con 'uses'
             if (\is_array($action) && isset($action['uses'])) {
                 return $this->container->call($action['uses'], $parameters);
@@ -247,7 +264,9 @@ class Router
             return Response::json([
                 'error' => 'Action Error',
                 'message' => $e->getMessage(),
-                'action' => \is_string($action) ? $action : gettype($action)
+                'action' => \is_array($action) ? json_encode($action) : (\is_string($action) ? $action : gettype($action)),
+                'file' => $e->getFile(),
+                'line' => $e->getLine()
             ], 500);
         }
     }
