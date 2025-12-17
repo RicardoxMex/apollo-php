@@ -23,6 +23,10 @@ class AppServiceProvider extends ServiceProvider {
     }
     
     public function boot(): void {
-        // Código de inicialización
+        // Cargar funciones de base de datos
+        require_once __DIR__ . '/../Database/database.php';
+        
+        // Inicializar base de datos
+        \Apollo\Core\Database\initDatabase();
     }
 }
