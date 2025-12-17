@@ -15,7 +15,7 @@ $config = $app->make('config');
 $config->loadFromFile(__DIR__ . '/config/app.php');
 
 // Registrar apps
-$apps = $config->get('apps.enabled', []);
+$apps = $config->get('apps', []);
 foreach ($apps as $appName) {
     $app->registerApp($appName);
 }

@@ -18,8 +18,12 @@ $app = new Apollo\Core\Application(dirname(__DIR__));
 // Cargar providers del core
 $app->registerServiceProvider(new Apollo\Core\Providers\AppServiceProvider($app));
 
-// ✅ CORRECCIÓN: Registrar apps ANTES de manejar la request
-$apps = ['users']; // Podría leerse de configuración
+// Cargar configuración
+$config = $app->make('config');
+$config->loadFromFile(dirname(__DIR__) . '/config/app.php');
+
+// Registrar apps desde configuración
+$apps = $config->get('apps', []);
 foreach ($apps as $appName) {
     try {
         $app->registerApp($appName);

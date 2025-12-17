@@ -1,0 +1,19 @@
+{
+    "name": "Apollo Framework",
+    "version": "1.0.0-alpha",
+    "description": "Modular PHP Framework",
+    "timezone": "UTC",
+    "locale": "en",
+    "apps": [
+        "users",
+        "products"
+    ],
+    "api": {
+        "prefix": "api2",
+        "version": "v1"
+    },
+    "providers": [
+        "Apollo\\Core\\Providers\\DatabaseServiceProvider",
+        "Apollo\\Core\\Providers\\RouterServiceProvider"
+    ]
+}

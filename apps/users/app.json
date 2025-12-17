@@ -3,6 +3,7 @@
     "version": "1.0.0",
     "description": "Users management app",
     "author": "Your Name",
+    "prefix": "api/users",
     "providers": [
        "Apps\\Users\\Providers\\UsersServiceProvider" 
     ],

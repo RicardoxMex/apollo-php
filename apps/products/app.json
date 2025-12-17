@@ -1,0 +1,9 @@
+{
+    "name": "products",
+    "version": "1.0.0",
+    "description": "Products management app",
+    "author": "Your Name",
+    "prefix": "api/products",
+    "providers": [],
+    "routes": []
+}

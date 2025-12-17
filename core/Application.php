@@ -113,6 +113,17 @@ class Application extends Container
             error_log("🔍 Registering app: {$appName}");
         }
 
+        // Leer app.json si existe
+        $appJsonPath = $appPath . '/app.json';
+        $appConfig = null;
+        
+        if (file_exists($appJsonPath)) {
+            $appConfig = json_decode(file_get_contents($appJsonPath), true);
+            if (!$this->isConsoleMode()) {
+                error_log("✅ app.json loaded for {$appName}");
+            }
+        }
+
         // Cargar configuración de la app
         $configPath = $appPath . '/config';
         if (is_dir($configPath)) {
@@ -122,32 +133,61 @@ class Application extends Container
             }
         }
 
-        // Registrar Service Provider de la app
-        $providerClass = "Apps\\{$appName}\\{$appName}ServiceProvider";
-        if (class_exists($providerClass)) {
-            $this->registerServiceProvider($providerClass);
-            if (!$this->isConsoleMode()) {
-                error_log("✅ ServiceProvider registered for {$appName}");
+        // Registrar Service Providers desde app.json
+        if ($appConfig && isset($appConfig['providers']) && is_array($appConfig['providers'])) {
+            foreach ($appConfig['providers'] as $providerClass) {
+                if (class_exists($providerClass)) {
+                    $this->registerServiceProvider($providerClass);
+                    if (!$this->isConsoleMode()) {
+                        error_log("✅ ServiceProvider registered: {$providerClass}");
+                    }
+                } else {
+                    if (!$this->isConsoleMode()) {
+                        error_log("⚠️  ServiceProvider not found: {$providerClass}");
+                    }
+                }
             }
         } else {
-            if (!$this->isConsoleMode()) {
-                error_log("⚠️  ServiceProvider not found: {$providerClass}");
+            // Fallback: buscar ServiceProvider con nombre convencional
+            $providerClass = "Apps\\{$appName}\\{$appName}ServiceProvider";
+            if (class_exists($providerClass)) {
+                $this->registerServiceProvider($providerClass);
+                if (!$this->isConsoleMode()) {
+                    error_log("✅ ServiceProvider registered (fallback): {$providerClass}");
+                }
             }
         }
 
-        // Cargar rutas de la app
-        $routesPath = $appPath . '/Routes';
-        if (is_dir($routesPath)) {
-            if (!$this->isConsoleMode()) {
-                error_log("🔍 Loading routes from: {$routesPath}");
-            }
-            $this->loadAppRoutes($appName, $routesPath);
-            if (!$this->isConsoleMode()) {
-                error_log("✅ Routes loaded for {$appName}");
+        // Determinar el prefix de las rutas
+        $prefix = $appConfig['prefix'] ?? "api/{$appName}";
+
+        // Cargar rutas desde app.json o desde directorio Routes
+        if ($appConfig && isset($appConfig['routes']) && is_array($appConfig['routes'])) {
+            $routesPath = $appPath . '/Routes';
+            foreach ($appConfig['routes'] as $routeFile) {
+                $fullRoutePath = $routesPath . '/' . $routeFile;
+                if (file_exists($fullRoutePath)) {
+                    $this->loadAppRoute($appName, $fullRoutePath, $prefix);
+                    if (!$this->isConsoleMode()) {
+                        error_log("✅ Route loaded: {$routeFile} with prefix: {$prefix}");
+                    }
+                } else {
+                    if (!$this->isConsoleMode()) {
+                        error_log("⚠️  Route file not found: {$fullRoutePath}");
+                    }
+                }
             }
         } else {
-            if (!$this->isConsoleMode()) {
-                error_log("⚠️  Routes directory not found: {$routesPath}");
+            // Fallback: cargar todas las rutas del directorio Routes
+            $routesPath = $appPath . '/Routes';
+            if (is_dir($routesPath)) {
+                if (!$this->isConsoleMode()) {
+                    error_log("🔍 Loading routes from: {$routesPath}");
+                }
+                $this->loadAppRoutes($appName, $routesPath, $prefix);
+                if (!$this->isConsoleMode()) {
+                    error_log("✅ Routes loaded for {$appName}");
+                }
             }
         }
 
@@ -164,24 +204,35 @@ class Application extends Container
         }
     }
 
-    private function loadAppRoutes(string $appName, string $routesPath): void
+    private function loadAppRoutes(string $appName, string $routesPath, ?string $prefix = null): void
     {
         $router = $this->make('router');
         $routeFiles = glob($routesPath . '/*.php');
         
+        $prefix = $prefix ?? "api/{$appName}";
+        
         foreach ($routeFiles as $routeFile) {
-            // Ejecutar dentro del grupo
-            $router->group([
-                'prefix' => "api/{$appName}",
-                'namespace' => "Apps\\{$appName}\\Controllers"
-            ], function ($router) use ($routeFile) {
-                // Incluir el archivo con $router disponible en el scope
-                require $routeFile;
-            });
+            $this->loadAppRoute($appName, $routeFile, $prefix);
         }
         
         // Reconstruir el índice de rutas nombradas después de cargar todas las rutas
         $router->getRouteCollection()->rebuildNamedRoutes();
+    }
+
+    private function loadAppRoute(string $appName, string $routeFile, ?string $prefix = null): void
+    {
+        $router = $this->make('router');
+        
+        $prefix = $prefix ?? "api/{$appName}";
+        
+        // Ejecutar dentro del grupo
+        $router->group([
+            'prefix' => $prefix,
+            'namespace' => "Apps\\{$appName}\\Controllers"
+        ], function ($router) use ($routeFile) {
+            // Incluir el archivo con $router disponible en el scope
+            require $routeFile;
+        });
     }
 
     public function handle(?Request $request = null)
