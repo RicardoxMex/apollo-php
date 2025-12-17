@@ -50,6 +50,11 @@ class Application extends Container
         $this->singleton('config', function () {
             return new Config();
         });
+
+        // Registrar router como singleton
+        $this->singleton('router', function ($app) {
+            return new Router\Router($app);
+        });
     }
 
     private function registerCoreAliases(): void
@@ -104,22 +109,32 @@ class Application extends Container
             throw new Exception("App '{$appName}' not found in apps directory");
         }
 
+        error_log("🔍 Registering app: {$appName}");
+
         // Cargar configuración de la app
         $configPath = $appPath . '/config';
         if (is_dir($configPath)) {
             $this->loadAppConfig($appName, $configPath);
+            error_log("✅ Config loaded for {$appName}");
         }
 
         // Registrar Service Provider de la app
         $providerClass = "Apps\\{$appName}\\{$appName}ServiceProvider";
         if (class_exists($providerClass)) {
             $this->registerServiceProvider($providerClass);
+            error_log("✅ ServiceProvider registered for {$appName}");
+        } else {
+            error_log("⚠️  ServiceProvider not found: {$providerClass}");
         }
 
         // Cargar rutas de la app
         $routesPath = $appPath . '/Routes';
         if (is_dir($routesPath)) {
+            error_log("🔍 Loading routes from: {$routesPath}");
             $this->loadAppRoutes($appName, $routesPath);
+            error_log("✅ Routes loaded for {$appName}");
+        } else {
+            error_log("⚠️  Routes directory not found: {$routesPath}");
         }
 
         $this->loadedApps[] = $appName;
@@ -138,15 +153,21 @@ class Application extends Container
     private function loadAppRoutes(string $appName, string $routesPath): void
     {
         $router = $this->make('router');
-
-        foreach (glob($routesPath . '/*.php') as $routeFile) {
-            $router->group(
-                ['namespace' => "Apps\\{$appName}\\Controllers", 'prefix' => $appName],
-                function ($router) use ($routeFile) {
-                    require $routeFile;
-                }
-            );
+        $routeFiles = glob($routesPath . '/*.php');
+        
+        foreach ($routeFiles as $routeFile) {
+            // Ejecutar dentro del grupo
+            $router->group([
+                'prefix' => "api/{$appName}",
+                'namespace' => "Apps\\{$appName}\\Controllers"
+            ], function ($router) use ($routeFile) {
+                // Incluir el archivo con $router disponible en el scope
+                require $routeFile;
+            });
         }
+        
+        // Reconstruir el índice de rutas nombradas después de cargar todas las rutas
+        $router->getRouteCollection()->rebuildNamedRoutes();
     }
 
     public function handle(?Request $request = null)

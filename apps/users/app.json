@@ -1,18 +1,10 @@
 {
     "name": "users",
     "version": "1.0.0",
-    "description": "Users management module",
+    "description": "Users management app",
     "author": "Your Name",
-    "license": "MIT",
-    "dependencies": [],
     "providers": [
         "Apps\\Users\\Providers\\UsersServiceProvider"
     ],
-    "aliases": {
-        "Users": "Apps\\Users\\Facades\\Users"
-    },
-    "config": {
-        "route_prefix": "api/users",
-        "middleware": ["api", "auth:api"]
-    }
+    "routes": ["api.php"]
 }

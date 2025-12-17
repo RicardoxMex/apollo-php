@@ -1,19 +1,42 @@
 <?php
 // public/index.php
 
+// Iniciar buffer para evitar problemas de headers
+ob_start();
+
 require_once __DIR__ . '/../vendor/autoload.php';
 
 // Inicializar variables de entorno
-$dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
-$dotenv->load();
-
-// Mostrar que funciona
-dd(env('APP_DEBUG'));
-// Probar autoloading
-if (class_exists('Apollo\Core\Container\Container')) {
-    echo "✅ Container cargado correctamente\n";
+if (file_exists(dirname(__DIR__) . '/.env')) {
+    $dotenv = Dotenv\Dotenv::createImmutable(dirname(__DIR__));
+    $dotenv->load();
 }
 
-if (class_exists('Apollo\Core\Router\Router')) {
-    echo "✅ Router cargado correctamente\n";
+// Crear aplicación
+$app = new Apollo\Core\Application(dirname(__DIR__));
+
+// Cargar providers del core
+$app->registerServiceProvider(new Apollo\Core\Providers\AppServiceProvider($app));
+
+// ✅ CORRECCIÓN: Registrar apps ANTES de manejar la request
+$apps = ['users']; // Podría leerse de configuración
+foreach ($apps as $appName) {
+    try {
+        $app->registerApp($appName);
+        error_log("✅ App '{$appName}' registered");
+    } catch (Exception $e) {
+        error_log("⚠️  App '{$appName}' error: " . $e->getMessage());
+    }
 }
+
+// Boot service providers
+$app->bootServiceProviders();
+
+// Manejar la request
+$response = $app->handle(
+    Apollo\Core\Http\Request::capture()
+);
+
+// Enviar respuesta
+ob_clean(); // Limpiar cualquier output previo
+$response->send();

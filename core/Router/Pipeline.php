@@ -4,14 +4,17 @@
 namespace Apollo\Core\Router;
 
 use Apollo\Core\Container\Container;
+use Apollo\Core\Http\Request;
+use Apollo\Core\Http\Response;
 use Closure;
+use Exception;
 
 class Pipeline {
     private Container $container;
     private array $middleware;
     private mixed $passable;
     
-    public function __construct(Container $container, array $middleware) {
+    public function __construct(Container $container, array $middleware = []) {
         $this->container = $container;
         $this->middleware = $middleware;
     }
@@ -30,9 +33,7 @@ class Pipeline {
         $pipeline = array_reduce(
             array_reverse($this->middleware),
             $this->carry(),
-            function($passable) use ($destination) {
-                return $destination($passable);
-            }
+            $destination
         );
         
         return $pipeline($this->passable);
@@ -41,16 +42,80 @@ class Pipeline {
     private function carry(): Closure {
         return function($stack, $middleware) {
             return function($passable) use ($stack, $middleware) {
-                if (is_string($middleware)) {
+                try {
+                    // Resolver middleware si es string
+                    if (\is_string($middleware)) {
+                        $middleware = $this->container->make($middleware);
+                    }
+                    
+                    // Si es una clase con método handle
+                    if (\is_object($middleware) && method_exists($middleware, 'handle')) {
+                        return $middleware->handle($passable, $stack);
+                    }
+                    
+                    // Si es un callable
+                    if (\is_callable($middleware)) {
+                        return $middleware($passable, $stack);
+                    }
+                    
+                    throw new Exception("Invalid middleware: " . gettype($middleware));
+                    
+                } catch (Exception $e) {
+                    // En caso de error en middleware, devolver respuesta de error
+                    if ($passable instanceof Request) {
+                        return Response::json([
+                            'error' => 'Middleware Error',
+                            'message' => $e->getMessage()
+                        ], 500);
+                    }
+                    
+                    throw $e;
+                }
+            };
+        };
+    }
+    
+    /**
+     * Ejecutar middleware sin pipeline (para casos simples)
+     */
+    public function run($passable = null) {
+        $passable = $passable ?? $this->passable;
+        
+        foreach ($this->middleware as $middleware) {
+            try {
+                if (\is_string($middleware)) {
                     $middleware = $this->container->make($middleware);
                 }
                 
-                if (method_exists($middleware, 'handle')) {
-                    return $middleware->handle($passable, $stack);
+                if (\is_object($middleware) && method_exists($middleware, 'handle')) {
+                    $result = $middleware->handle($passable, function($p) { return $p; });
+                } elseif (\is_callable($middleware)) {
+                    $result = $middleware($passable, function($p) { return $p; });
+                } else {
+                    throw new Exception("Invalid middleware: " . gettype($middleware));
                 }
                 
-                return $middleware($passable, $stack);
-            };
-        };
+                // Si el middleware devuelve una respuesta, detener la cadena
+                if ($result instanceof Response) {
+                    return $result;
+                }
+                
+                // Actualizar el passable para el siguiente middleware
+                if ($result !== null) {
+                    $passable = $result;
+                }
+                
+            } catch (Exception $e) {
+                if ($passable instanceof Request) {
+                    return Response::json([
+                        'error' => 'Middleware Error',
+                        'message' => $e->getMessage()
+                    ], 500);
+                }
+                throw $e;
+            }
+        }
+        
+        return $passable;
     }
 }

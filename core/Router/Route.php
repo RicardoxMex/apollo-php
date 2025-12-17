@@ -12,27 +12,35 @@ class Route {
     public ?string $name = null;
     public ?string $domain = null;
     public array $defaults = [];
+    private array $parameterNames = [];
     
     public function __construct(string $method, string $uri, $action) {
         $this->method = strtoupper($method);
         $this->uri = $this->normalizeUri($uri);
         $this->action = $action;
+        $this->extractParameterNames();
     }
     
     private function normalizeUri(string $uri): string {
+        if ($uri === '/') {
+            return '/';
+        }
         return '/' . trim($uri, '/');
     }
     
+    private function extractParameterNames(): void {
+        preg_match_all('/\{(\w+)(?::([^}]+))?\}/', $this->uri, $matches);
+        $this->parameterNames = $matches[1] ?? [];
+    }
+    
     public function middleware($middleware): self {
-        $this->middleware = array_merge(
-            $this->middleware,
-            is_array($middleware) ? $middleware : [$middleware]
-        );
+        $middlewareArray = \is_array($middleware) ? $middleware : [$middleware];
+        $this->middleware = [...$this->middleware, ...$middlewareArray];
         return $this;
     }
     
     public function where(array $where): self {
-        $this->where = array_merge($this->where, $where);
+        $this->where = [...$this->where, ...$where];
         return $this;
     }
     
@@ -47,7 +55,7 @@ class Route {
     }
     
     public function defaults(array $defaults): self {
-        $this->defaults = array_merge($this->defaults, $defaults);
+        $this->defaults = [...$this->defaults, ...$defaults];
         return $this;
     }
     
@@ -61,10 +69,13 @@ class Route {
             return "(?P<{$param}>{$regex})";
         }, $pattern);
         
-        return '#^' . $pattern . '$#';
+        return "#^{$pattern}$#";
     }
     
     public function matches(string $method, string $uri): bool {
+        // Normalizar método
+        $method = strtoupper($method);
+        
         if ($this->method !== $method && $this->method !== 'ANY') {
             return false;
         }
@@ -73,15 +84,26 @@ class Route {
     }
     
     public function parseParameters(string $uri): array {
+        $matches = [];
         preg_match($this->getRegex(), $uri, $matches);
         
         $params = [];
-        foreach ($this->where as $param => $regex) {
-            if (isset($matches[$param])) {
-                $params[$param] = $matches[$param];
+        
+        // Extraer parámetros nombrados del regex
+        foreach ($this->parameterNames as $paramName) {
+            if (isset($matches[$paramName])) {
+                $params[$paramName] = $matches[$paramName];
             }
         }
         
-        return array_merge($this->defaults, $params);
+        return [...$this->defaults, ...$params];
+    }
+    
+    public function getParameterNames(): array {
+        return $this->parameterNames;
+    }
+    
+    public function hasParameters(): bool {
+        return !empty($this->parameterNames);
     }
 }

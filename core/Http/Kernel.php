@@ -19,11 +19,20 @@ class Kernel {
     
     public function handle(Request $request): Response {
         try {
-            // Ejecutar middleware global
-            $response = $this->sendThroughMiddleware($request);
-            
-            if ($response instanceof Response) {
-                return $response;
+            // Ejecutar middleware global antes del routing
+            if (!empty($this->middleware)) {
+                $pipeline = new \Apollo\Core\Router\Pipeline($this->container, $this->middleware);
+                $result = $pipeline->run($request);
+                
+                // Si el middleware devuelve una respuesta, usarla
+                if ($result instanceof Response) {
+                    return $result;
+                }
+                
+                // Si el middleware modificó la request, usar la nueva
+                if ($result instanceof Request) {
+                    $request = $result;
+                }
             }
             
             // Enrutar y ejecutar
@@ -32,20 +41,6 @@ class Kernel {
         } catch (Throwable $e) {
             return $this->handleException($e);
         }
-    }
-    
-    private function sendThroughMiddleware(Request $request) {
-        if (empty($this->middleware)) {
-            return null;
-        }
-        
-        $pipeline = new \Apollo\Core\Router\Pipeline($this->container, $this->middleware);
-        
-        return $pipeline->send($request)
-            ->then(function($request) {
-                // Continuar con el router
-                return null;
-            });
     }
     
     private function handleException(Throwable $e): Response {

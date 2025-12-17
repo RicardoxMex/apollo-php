@@ -53,6 +53,11 @@ class Response {
         return $this;
     }
     
+    public function withHeaders(array $headers): self {
+        $this->headers = [...$this->headers, ...$headers];
+        return $this;
+    }
+    
     public function send(): void {
         http_response_code($this->status);
         

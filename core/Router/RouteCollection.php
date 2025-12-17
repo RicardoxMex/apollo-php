@@ -7,6 +7,8 @@ class RouteCollection {
     private array $routes = [];
     private array $namedRoutes = [];
     
+
+    
     public function add(Route $route): void {
         $this->routes[] = $route;
         
@@ -36,5 +38,14 @@ class RouteCollection {
     public function clear(): void {
         $this->routes = [];
         $this->namedRoutes = [];
+    }
+    
+    public function rebuildNamedRoutes(): void {
+        $this->namedRoutes = [];
+        foreach ($this->routes as $route) {
+            if ($route->name) {
+                $this->namedRoutes[$route->name] = $route;
+            }
+        }
     }
 }

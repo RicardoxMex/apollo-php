@@ -32,9 +32,9 @@ class Router
     {
         $route = $this->createRoute($method, $uri, $action);
 
-        // Aplicar middleware del grupo
-        if (!empty($this->groupStack)) {
-            $route = $this->mergeGroupAttributes($route, end($this->groupStack));
+        // Aplicar atributos de todos los grupos en la pila (del más externo al más interno)
+        foreach ($this->groupStack as $groupAttributes) {
+            $route = $this->mergeGroupAttributes($route, $groupAttributes);
         }
 
         $this->routes->add($route);
@@ -45,7 +45,7 @@ class Router
     private function createRoute(string $method, string $uri, $action): Route
     {
         // Si la acción es un string, convertir a ['uses' => 'Controller@method']
-        if (is_string($action)) {
+        if (\is_string($action)) {
             if (str_contains($action, '@')) {
                 [$controller, $method] = explode('@', $action);
                 $action = ['uses' => $action, 'controller' => $controller];
@@ -55,7 +55,7 @@ class Router
         }
 
         // Si es un array, crear ruta
-        if (is_array($action)) {
+        if (\is_array($action)) {
             $route = new Route($method, $uri, $action);
 
             // Extraer middleware del array
@@ -133,11 +133,23 @@ class Router
     private function mergeGroupAttributes(Route $route, array $attributes): Route
     {
         if (isset($attributes['prefix'])) {
-            $route->uri = $this->normalizeUri($attributes['prefix']) . $route->uri;
+            $prefix = $this->normalizeUri($attributes['prefix']);
+            $uri = $route->uri;
+            
+            // Evitar barras dobles
+            if ($prefix === '/' && $uri === '/') {
+                $route->uri = '/';
+            } elseif ($prefix === '/') {
+                $route->uri = $uri;
+            } elseif ($uri === '/') {
+                $route->uri = $prefix;
+            } else {
+                $route->uri = $prefix . $uri;
+            }
         }
 
         if (isset($attributes['namespace'])) {
-            if (is_array($route->action) && isset($route->action['uses'])) {
+            if (\is_array($route->action) && isset($route->action['uses'])) {
                 $route->action['uses'] = $attributes['namespace'] . '\\' . $route->action['uses'];
             }
         }
@@ -175,33 +187,35 @@ class Router
         $route = $this->routes->match($request->getMethod(), $request->getPath());
 
         if (!$route) {
-            return $this->container->make('response')->json([
+            return Response::json([
                 'error' => 'Not Found',
-                'message' => 'Route not found'
+                'message' => 'Route not found',
+                'path' => $request->getPath(),
+                'method' => $request->getMethod()
             ], 404);
         }
 
         // Parsear parámetros
         $parameters = $route->parseParameters($request->getPath());
 
-        // Ejecutar middleware
-        $middleware = array_merge($this->globalMiddleware, $route->middleware);
+        // Combinar middleware global y de ruta
+        $middleware = [...$this->globalMiddleware, ...$route->middleware];
 
-        // Ejecutar la acción
-        $response = $this->runRoute($route, $parameters, $middleware);
-
-        return $response;
+        // Ejecutar la acción con middleware
+        return $this->runRoute($request, $route, $parameters, $middleware);
     }
 
-    private function runRoute(Route $route, array $parameters, array $middleware)
+    private function runRoute(Request $request, Route $route, array $parameters, array $middleware)
     {
+        // Registrar la request actual en el container
+        $this->container->instance('request', $request);
+        $this->container->instance(Request::class, $request);
+
         // Si hay middleware, crear pipeline
         if (!empty($middleware)) {
             $pipeline = new Pipeline($this->container, $middleware);
 
-            return $pipeline->then(function () use ($route, $parameters) {
-                return $this->callAction($route, $parameters);
-            });
+            return $pipeline->send($request)->then(fn() => $this->callAction($route, $parameters));
         }
 
         return $this->callAction($route, $parameters);
@@ -211,20 +225,41 @@ class Router
     {
         $action = $route->action;
 
-        if ($action instanceof Closure) {
-            return $this->container->call($action, $parameters);
-        }
+        try {
+            // Si es un Closure
+            if ($action instanceof Closure) {
+                return $this->container->call($action, $parameters);
+            }
 
-        if (is_array($action) && isset($action['uses'])) {
-            return $this->container->call($action['uses'], $parameters);
-        }
+            // Si es un array con 'uses'
+            if (\is_array($action) && isset($action['uses'])) {
+                return $this->container->call($action['uses'], $parameters);
+            }
 
-        throw new InvalidArgumentException('Invalid route action');
+            // Si es un string (Controller@method)
+            if (\is_string($action)) {
+                return $this->container->call($action, $parameters);
+            }
+
+            throw new InvalidArgumentException('Invalid route action: ' . gettype($action));
+
+        } catch (\Throwable $e) {
+            return Response::json([
+                'error' => 'Action Error',
+                'message' => $e->getMessage(),
+                'action' => \is_string($action) ? $action : gettype($action)
+            ], 500);
+        }
     }
 
     public function getRoutes(): array
     {
         return $this->routes->getRoutes();
+    }
+    
+    public function getRouteCollection(): RouteCollection
+    {
+        return $this->routes;
     }
 
     public function url(string $name, array $parameters = []): string
@@ -238,7 +273,7 @@ class Router
         $uri = $route->uri;
 
         foreach ($parameters as $key => $value) {
-            $uri = str_replace('{' . $key . '}', $value, $uri);
+            $uri = str_replace("{{$key}}", $value, $uri);
         }
 
         return $uri;
