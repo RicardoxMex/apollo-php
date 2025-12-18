@@ -17,8 +17,8 @@ class ApolloAuthServiceProvider extends ServiceProvider
             return new AuthService();
         });
 
-        // Register Auth facade
-        $this->container->singleton('auth', function ($app) {
+        // Register Auth facade (usar otro alias para evitar conflicto con middleware)
+        $this->container->singleton('auth.service', function ($app) {
             return $app->make(AuthService::class);
         });
 
@@ -41,11 +41,18 @@ class ApolloAuthServiceProvider extends ServiceProvider
         // Register middleware aliases
         $router = $this->container->make('router');
         
-        if (method_exists($router, 'aliasMiddleware')) {
-            $router->aliasMiddleware('auth', AuthMiddleware::class);
-            $router->aliasMiddleware('role', RoleMiddleware::class);
-            $router->aliasMiddleware('permission', PermissionMiddleware::class);
-        }
+        // Register middleware aliases directly in container
+        $this->container->singleton('auth', function ($app) {
+            return $app->make(AuthMiddleware::class);
+        });
+        
+        $this->container->singleton('role', function ($app) {
+            return $app->make(RoleMiddleware::class);
+        });
+        
+        $this->container->singleton('permission', function ($app) {
+            return $app->make(PermissionMiddleware::class);
+        });
 
         // Load helpers
         $this->loadHelpers();

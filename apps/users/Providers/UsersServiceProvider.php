@@ -29,11 +29,9 @@ class UsersServiceProvider extends ServiceProvider {
             new UserController($container, $container->make(UserService::class))
         );
         
-        // Registrar middlewares
-        $this->container->bind('auth', fn($container) => new Authenticate());
-        $this->container->bind('role', fn($container) => new RoleMiddleware());
-        $this->container->bind('role.admin', fn($container) => new RoleMiddleware(['admin']));
-        $this->container->bind('role.user', fn($container) => new RoleMiddleware(['user', 'admin']));
+        // Registrar middlewares específicos de users (evitando conflictos con ApolloAuth)
+        $this->container->bind('users.role.admin', fn($container) => new RoleMiddleware(['admin']));
+        $this->container->bind('users.role.user', fn($container) => new RoleMiddleware(['user', 'admin']));
         $this->container->bind('logging', fn($container) => new LoggingMiddleware());
         $this->container->bind('cors', fn($container) => new CorsMiddleware());
     }

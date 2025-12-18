@@ -10,7 +10,7 @@ if (!function_exists('auth')) {
      */
     function auth(?string $guard = null): AuthService
     {
-        return app('auth');
+        return app('auth.service');
     }
 }
 

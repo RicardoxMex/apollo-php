@@ -3,8 +3,6 @@
 
 namespace Apollo\Core\Http;
 
-use Apollo\Core\Auth\Models\User;
-
 class Request
 {
     private array $query;
@@ -14,7 +12,7 @@ class Request
     private array $files;
     private array $server;
     private ?string $content;
-    private ?User $user = null;
+    private $user = null;
 
     public function __construct(
         array $query = [],
@@ -187,7 +185,7 @@ class Request
     /**
      * Set authenticated user
      */
-    public function setUser(User $user): void
+    public function setUser($user): void
     {
         $this->user = $user;
     }
@@ -195,7 +193,7 @@ class Request
     /**
      * Get authenticated user
      */
-    public function user(): ?User
+    public function user()
     {
         return $this->user;
     }

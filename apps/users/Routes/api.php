@@ -25,10 +25,16 @@ $router->group(['middleware' => ['auth']], function($router) {
     // Perfil del usuario autenticado
     $router->get('/profile', function() {
         $request = app('request'); // Obtener request del container
-        $user = $request->attributes['user'] ?? null;
+        $user = $request->user();
         
         return Response::json([
-            'data' => $user,
+            'data' => [
+                'id' => $user->id,
+                'username' => $user->username,
+                'email' => $user->email,
+                'full_name' => $user->full_name,
+                'status' => $user->status
+            ],
             'message' => 'Profile retrieved successfully',
             'authenticated_at' => date('Y-m-d H:i:s')
         ]);
@@ -42,7 +48,7 @@ $router->group(['middleware' => ['auth']], function($router) {
 });
 
 // Rutas que requieren rol de administrador
-$router->group(['middleware' => ['auth', 'role.admin']], function($router) {
+$router->group(['middleware' => ['auth', 'role:admin']], function($router) {
     
     // Eliminar usuario (solo admin) - Usando sintaxis [Controller::class, 'method']
     $router->delete('/{id}', [UserController::class, 'destroy'])->where(['id' => '\d+'])->name('users.destroy');
@@ -50,14 +56,14 @@ $router->group(['middleware' => ['auth', 'role.admin']], function($router) {
     // Estadísticas de usuarios (solo admin)
     $router->get('/stats', function() {
         $request = app('request');
-        $user = $request->attributes['user'] ?? null;
+        $user = $request->user();
         
         return Response::json([
             'data' => [
                 'total_users' => 150,
                 'active_users' => 120,
                 'new_users_today' => 5,
-                'admin_user' => $user['name'] ?? 'Unknown'
+                'admin_user' => $user->full_name ?? 'Unknown'
             ],
             'message' => 'User statistics retrieved successfully'
         ]);
@@ -67,10 +73,15 @@ $router->group(['middleware' => ['auth', 'role.admin']], function($router) {
 // Ruta de demostración con múltiples middlewares
 $router->get('/demo', function() {
     $request = app('request');
+    $user = $request->user();
     return Response::json([
         'message' => 'Demo endpoint with multiple middlewares',
         'middlewares_applied' => ['cors', 'logging', 'auth'],
-        'user' => $request->attributes['user'] ?? null,
+        'user' => [
+            'id' => $user->id,
+            'username' => $user->username,
+            'email' => $user->email
+        ],
         'timestamp' => date('Y-m-d H:i:s')
     ]);
 })->middleware(['cors', 'logging', 'auth'])->name('users.demo');

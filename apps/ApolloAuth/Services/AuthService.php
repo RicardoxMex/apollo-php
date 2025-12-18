@@ -4,10 +4,12 @@ namespace Apps\ApolloAuth\Services;
 
 use Apps\ApolloAuth\Models\User;
 use Apps\ApolloAuth\Models\UserSession;
+use Apps\ApolloAuth\Services\JWTManager;
 use Apps\ApolloAuth\Exceptions\AuthenticationException;
 use Apps\ApolloAuth\Exceptions\InvalidCredentialsException;
 use Apps\ApolloAuth\Exceptions\UserNotActiveException;
 use Apollo\Core\Http\Request;
+use PDO;
 use Exception;
 
 class AuthService
@@ -155,28 +157,82 @@ class AuthService
     public function authenticateFromToken(string $token): ?User
     {
         try {
+            error_log("🔍 Validating token: " . substr($token, 0, 20) . "...");
+            
             $payload = JWTManager::validateToken($token);
             
             if (!$payload) {
+                error_log("❌ JWT validation failed");
                 return null;
             }
+
+            error_log("✅ JWT payload: " . json_encode($payload));
 
             // Check if session exists and is active
-            $session = UserSession::where('token_id', $payload['jti'])
-                ->where('is_revoked', false)
-                ->where('expires_at', '>', now())
-                ->first();
+            $currentTime = date('Y-m-d H:i:s');
+            
+            // Usar consulta SQL directa con prepared statement
+            $connection = UserSession::getConnection();
+            $stmt = $connection->prepare("SELECT * FROM user_sessions WHERE token_id = :token_id AND is_revoked = 0 AND expires_at > :current_time LIMIT 1");
+            $stmt->execute([
+                'token_id' => $payload['jti'],
+                'current_time' => $currentTime
+            ]);
+            $result = $stmt->fetch(PDO::FETCH_ASSOC);
+            
+            if (!$result) {
+                error_log("❌ Session not found or expired for token_id: " . $payload['jti']);
+                error_log("🔍 Current time: " . $currentTime);
+                
+                // Debug: mostrar sesiones existentes
+                $debugStmt = $connection->prepare("SELECT * FROM user_sessions WHERE token_id = :token_id");
+                $debugStmt->execute(['token_id' => $payload['jti']]);
+                $allSessions = $debugStmt->fetchAll(PDO::FETCH_ASSOC);
+                error_log("🔍 All sessions for token_id: " . json_encode($allSessions));
+                
+                return null;
+            }
+            
+            // Crear instancia del modelo manualmente
+            $session = new UserSession();
+            $session->attributes = $result;
+            $session->exists = true;
 
             if (!$session) {
+                error_log("❌ Session not found or expired for token_id: " . $payload['jti']);
+                error_log("🔍 Current time: " . $currentTime);
+                
+                // Debug: mostrar sesiones existentes
+                $allSessions = UserSession::where('token_id', $payload['jti'])->get();
+                error_log("🔍 All sessions for token_id: " . json_encode($allSessions->toArray()));
+                
                 return null;
             }
 
-            // Get user
-            $user = User::find($payload['sub']);
+            error_log("✅ Session found: " . json_encode($session->toArray()));
+
+            // Get user using direct query to avoid model issues
+            $userStmt = $connection->prepare("SELECT * FROM users WHERE id = :user_id AND deleted_at IS NULL LIMIT 1");
+            $userStmt->execute(['user_id' => $payload['sub']]);
+            $userData = $userStmt->fetch(PDO::FETCH_ASSOC);
             
-            if (!$user || !$user->isActive()) {
+            if (!$userData) {
+                error_log("❌ User not found: " . $payload['sub']);
                 return null;
             }
+            
+            // Create user model instance
+            $user = new User();
+            $user->attributes = $userData;
+            $user->original = $userData;
+            $user->exists = true;
+            
+            if (!$user->isActive()) {
+                error_log("❌ User inactive: " . $user->email . " (status: " . $user->status . ")");
+                return null;
+            }
+
+            error_log("✅ User authenticated: " . $user->email);
 
             // Update session last used
             $session->updateLastUsed();
@@ -187,6 +243,7 @@ class AuthService
             return $user;
 
         } catch (Exception $e) {
+            error_log("❌ Auth exception: " . $e->getMessage());
             return null;
         }
     }
