@@ -39,7 +39,7 @@ class AuthController
                         'username' => $result['user']->username,
                         'email' => $result['user']->email,
                         'full_name' => $result['user']->full_name,
-                        'roles' => $result['user']->roles->pluck('name'),
+                        'roles' => array_map(function($role) { return $role->name; }, $result['user']->roles()),
                         'permissions' => $result['user']->getAllPermissions()
                     ],
                     'token' => $result['token'],
@@ -147,13 +147,13 @@ class AuthController
                     'email_verified_at' => $user->email_verified_at,
                     'last_login_at' => $user->last_login_at,
                     'avatar' => $user->avatar,
-                    'roles' => $user->roles->map(function ($role) {
+                    'roles' => array_map(function ($role) {
                         return [
                             'id' => $role->id,
                             'name' => $role->name,
                             'display_name' => $role->display_name
                         ];
-                    }),
+                    }, $user->roles()),
                     'permissions' => $user->getAllPermissions(),
                     'created_at' => $user->created_at,
                     'updated_at' => $user->updated_at
