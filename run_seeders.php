@@ -1,20 +1,15 @@
-#!/usr/bin/env php
 <?php
-// apollo
 
 require_once __DIR__ . '/vendor/autoload.php';
 
-// Inicializar variables de entorno
+// Cargar variables de entorno
 if (file_exists(__DIR__ . '/.env')) {
     $dotenv = Dotenv\Dotenv::createImmutable(__DIR__);
     $dotenv->load();
 }
 
-use Apollo\Core\Application;
-use Apollo\Core\Console\Kernel;
-
-// Crear la aplicación
-$app = new Application(__DIR__);
+// Crear aplicación
+$app = new Apollo\Core\Application(__DIR__);
 
 // Cargar configuración
 $config = $app->make('config');
@@ -27,32 +22,23 @@ foreach ($coreProviders as $providerClass) {
     }
 }
 
-// Registrar App Service Providers
-$appProviders = $config->get('providers.app', []);
-foreach ($appProviders as $providerClass) {
-    if (class_exists($providerClass)) {
-        $app->registerServiceProvider(new $providerClass($app));
-    }
-}
-
-// Registrar apps desde configuración
+// Registrar apps
 $registeredApps = $config->get('apps.registered', []);
 foreach ($registeredApps as $appName) {
     try {
         $app->registerApp($appName);
     } catch (Exception $e) {
-        // En modo CLI, mostrar errores pero continuar
         echo "⚠️  App '{$appName}' error: " . $e->getMessage() . "\n";
     }
 }
 
-// Boot service providers
 $app->bootServiceProviders();
 
-// Crear kernel de consola
-$kernel = new Kernel($app);
+echo "🚀 Running Apollo Seeders...\n\n";
 
-// Ejecutar comando
-$exitCode = $kernel->handle($argv);
+// Ejecutar seeder de roles
+require_once __DIR__ . '/database/seeds/RolesSeeder.php';
+$rolesSeeder = new RolesSeeder();
+$rolesSeeder->run();
 
-exit($exitCode);
+echo "\n✅ All seeders completed successfully!\n";

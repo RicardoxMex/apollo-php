@@ -15,15 +15,28 @@ if (file_exists(dirname(__DIR__) . '/.env')) {
 // Crear aplicación
 $app = new Apollo\Core\Application(dirname(__DIR__));
 
-// Cargar providers del core
-$app->registerServiceProvider(new Apollo\Core\Providers\AppServiceProvider($app));
-
 // Configuración se carga automáticamente
 $config = $app->make('config');
 
+// Registrar Core Service Providers
+$coreProviders = $config->get('providers.core', []);
+foreach ($coreProviders as $providerClass) {
+    if (class_exists($providerClass)) {
+        $app->registerServiceProvider(new $providerClass($app));
+    }
+}
+
+// Registrar App Service Providers
+$appProviders = $config->get('providers.app', []);
+foreach ($appProviders as $providerClass) {
+    if (class_exists($providerClass)) {
+        $app->registerServiceProvider(new $providerClass($app));
+    }
+}
+
 // Registrar apps desde configuración
-$apps = $config->get('apps', []);
-foreach ($apps as $appName) {
+$registeredApps = $config->get('apps.registered', []);
+foreach ($registeredApps as $appName) {
     try {
         $app->registerApp($appName);
         error_log("✅ App '{$appName}' registered");

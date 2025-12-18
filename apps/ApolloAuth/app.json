@@ -1,0 +1,21 @@
+{
+    "name": "ApolloAuth",
+    "version": "1.0.0",
+    "description": "Sistema de autenticación completo para Apollo Framework",
+    "prefix": "api/auth",
+    "providers": [
+        "Apps\\ApolloAuth\\ApolloAuthServiceProvider"
+    ],
+    "routes": [
+        "auth.php",
+        "admin.php"
+    ],
+    "middleware": {
+        "auth": "Apps\\ApolloAuth\\Middleware\\AuthMiddleware",
+        "role": "Apps\\ApolloAuth\\Middleware\\RoleMiddleware",
+        "permission": "Apps\\ApolloAuth\\Middleware\\PermissionMiddleware"
+    },
+    "dependencies": [],
+    "author": "Apollo Framework",
+    "license": "MIT"
+}

@@ -3,6 +3,8 @@
 
 namespace Apollo\Core\Http;
 
+use Apollo\Core\Auth\Models\User;
+
 class Request
 {
     private array $query;
@@ -12,6 +14,7 @@ class Request
     private array $files;
     private array $server;
     private ?string $content;
+    private ?User $user = null;
 
     public function __construct(
         array $query = [],
@@ -171,5 +174,37 @@ class Request
         
         // Fallback a REMOTE_ADDR
         return $this->server['REMOTE_ADDR'] ?? '127.0.0.1';
+    }
+
+    /**
+     * Get user agent
+     */
+    public function userAgent(): string
+    {
+        return $this->server['HTTP_USER_AGENT'] ?? '';
+    }
+
+    /**
+     * Set authenticated user
+     */
+    public function setUser(User $user): void
+    {
+        $this->user = $user;
+    }
+
+    /**
+     * Get authenticated user
+     */
+    public function user(): ?User
+    {
+        return $this->user;
+    }
+
+    /**
+     * Check if request has authenticated user
+     */
+    public function hasUser(): bool
+    {
+        return $this->user !== null;
     }
 }

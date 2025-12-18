@@ -16,9 +16,14 @@ class QueryBuilder {
         'limit' => '',
         'offset' => ''
     ];
+    private ?string $modelClass = null;
     
-    public function __construct(PDO $pdo) {
+    public function __construct(PDO $pdo, ?string $table = null, ?string $modelClass = null) {
         $this->pdo = $pdo;
+        if ($table) {
+            $this->queryParts['from'] = $table;
+        }
+        $this->modelClass = $modelClass;
     }
     
     public function table(string $table): self {
@@ -35,7 +40,8 @@ class QueryBuilder {
         return $this;
     }
     
-    public function where(string $column, $operator, $value = null): self {
+    public function where(string $column, $operator = null, $value = null): self {
+        // Si solo se pasan 2 argumentos, el segundo es el valor y el operador es '='
         if (func_num_args() === 2) {
             $value = $operator;
             $operator = '=';
@@ -48,7 +54,7 @@ class QueryBuilder {
         return $this;
     }
     
-    public function orWhere(string $column, $operator, $value = null): self {
+    public function orWhere(string $column, $operator = null, $value = null): self {
         if (func_num_args() === 2) {
             $value = $operator;
             $operator = '=';
@@ -58,6 +64,22 @@ class QueryBuilder {
         $this->queryParts['where'][] = "OR {$column} {$operator} :{$placeholder}";
         $this->bindings[$placeholder] = $value;
         
+        return $this;
+    }
+
+    public function whereIn(string $column, array $values): self {
+        if (empty($values)) {
+            return $this;
+        }
+
+        $placeholders = [];
+        foreach ($values as $i => $value) {
+            $placeholder = 'param_' . count($this->bindings);
+            $placeholders[] = ":{$placeholder}";
+            $this->bindings[$placeholder] = $value;
+        }
+
+        $this->queryParts['where'][] = "{$column} IN (" . implode(', ', $placeholders) . ")";
         return $this;
     }
     
@@ -108,11 +130,26 @@ class QueryBuilder {
         $sql = $this->buildQuery();
         $stmt = $this->execute($sql);
         
+        $results = $stmt->fetchAll();
         $this->reset();
-        return $stmt->fetchAll();
+        
+        // Si tenemos una clase de modelo, crear instancias
+        if ($this->modelClass) {
+            $models = [];
+            foreach ($results as $result) {
+                $instance = new $this->modelClass();
+                $instance->attributes = $result;
+                $instance->original = $result;
+                $instance->exists = true;
+                $models[] = $instance;
+            }
+            return $models;
+        }
+        
+        return $results;
     }
     
-    public function first(): ?array {
+    public function first() {
         $this->limit(1);
         $result = $this->get();
         return $result[0] ?? null;
