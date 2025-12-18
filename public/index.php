@@ -18,9 +18,8 @@ $app = new Apollo\Core\Application(dirname(__DIR__));
 // Cargar providers del core
 $app->registerServiceProvider(new Apollo\Core\Providers\AppServiceProvider($app));
 
-// Cargar configuración
+// Configuración se carga automáticamente
 $config = $app->make('config');
-$config->loadFromFile(dirname(__DIR__) . '/config/app.php');
 
 // Registrar apps desde configuración
 $apps = $config->get('apps', []);

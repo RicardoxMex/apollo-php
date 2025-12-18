@@ -48,13 +48,36 @@ class Application extends Container
 
         // Registrar configuraciones
         $this->singleton('config', function () {
-            return new Config();
+            $config = new Config();
+            $this->loadCoreConfigurations($config);
+            return $config;
         });
 
         // Registrar router como singleton
         $this->singleton('router', function ($app) {
             return new Router\Router($app);
         });
+    }
+
+    private function loadCoreConfigurations(Config $config): void
+    {
+        if (!isset($this->basePath)) {
+            return;
+        }
+
+        $configPath = $this->basePath . '/config';
+        if (!is_dir($configPath)) {
+            return;
+        }
+
+        // Load all config files
+        foreach (glob($configPath . '/*.php') as $configFile) {
+            $key = pathinfo($configFile, PATHINFO_FILENAME);
+            $configData = require $configFile;
+            if (is_array($configData)) {
+                $config->set($key, $configData);
+            }
+        }
     }
 
     private function registerCoreAliases(): void
