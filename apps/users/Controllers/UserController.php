@@ -19,14 +19,26 @@ class UserController extends Controller
     public function index()
     {
         try {
-            $page = $this->request->query('page', 1);
-            $perPage = $this->request->query('perPage', 10);
+            $search = $this->request->query('search');
+            
+            // Si hay parámetro de búsqueda, usar search en lugar de paginación
+            if (!empty($search)) {
+                $users = $this->userService->searchUsers($search);
+                
+                return $this->json([
+                    'success' => true,
+                    'data' => $users,
+                    'search_term' => $search,
+                    'total' => count($users)
+                ]);
+            }
+            
 
-            $users = $this->userService->paginate((int) $perPage, (int) $page);
+            $users = $this->userService->paginate();
 
             return $this->json([
                 'success' => true,
-                'data' => $users
+                ...$users  // Spread operator para incluir data y meta directamente
             ]);
         } catch (\Throwable $e) {
             return $this->json([

@@ -119,8 +119,22 @@ class QueryBuilder {
     }
     
     public function count(): int {
-        $this->queryParts['select'] = 'COUNT(*) as total';
-        $result = $this->first();
+        // Create a separate count query without affecting current query parts
+        $sql = "SELECT COUNT(*) as total FROM {$this->queryParts['from']}";
+        
+        if (!empty($this->queryParts['where'])) {
+            $whereClause = implode(' ', $this->queryParts['where']);
+            // Si el primer where empieza con OR, lo convertimos a WHERE normal
+            if (stripos($whereClause, 'OR ') === 0) {
+                $whereClause = substr($whereClause, 3);
+            }
+            $sql .= " WHERE {$whereClause}";
+        }
+        
+        $stmt = $this->pdo->prepare($sql);
+        $stmt->execute($this->bindings);
+        $result = $stmt->fetch();
+        
         return (int) ($result['total'] ?? 0);
     }
     
