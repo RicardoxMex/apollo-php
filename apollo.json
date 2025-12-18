@@ -13,7 +13,6 @@
         "version": "v1"
     },
     "providers": [
-        "Apollo\\Core\\Providers\\DatabaseServiceProvider",
-        "Apollo\\Core\\Providers\\RouterServiceProvider"
+
     ]
 }
