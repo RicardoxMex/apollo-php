@@ -3,8 +3,8 @@
 namespace Apps\ApolloAuth;
 
 use Apollo\Core\Container\ServiceProvider;
-use Apps\ApolloAuth\Services\AuthService;
-use Apps\ApolloAuth\Middleware\AuthMiddleware;
+use Apollo\Core\Auth\AuthService;
+use Apollo\Core\Auth\Middleware\AuthMiddleware;
 use Apps\ApolloAuth\Middleware\RoleMiddleware;
 use Apps\ApolloAuth\Middleware\PermissionMiddleware;
 

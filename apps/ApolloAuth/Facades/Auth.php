@@ -2,8 +2,8 @@
 
 namespace Apps\ApolloAuth\Facades;
 
-use Apps\ApolloAuth\Models\User;
-use Apps\ApolloAuth\Services\AuthService;
+use Apollo\Core\Auth\User;
+use Apollo\Core\Auth\AuthService;
 
 /**
  * Auth Facade - Global access to authentication

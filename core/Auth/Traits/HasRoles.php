@@ -1,8 +1,10 @@
 <?php
 
-namespace Apps\ApolloAuth\Traits;
+namespace Apollo\Core\Auth\Traits;
 
-use Apps\ApolloAuth\Models\Role;
+use Apollo\Core\Auth\Role;
+use Apollo\Core\Database\QueryBuilder;
+use Apollo\Core\Database\Model;
 
 trait HasRoles
 {
@@ -12,8 +14,8 @@ trait HasRoles
     public function roles()
     {
         // Obtener roles del usuario desde la tabla pivot
-        $query = new \Apollo\Core\Database\QueryBuilder(
-            \Apollo\Core\Database\Model::getConnection(),
+        $query = new QueryBuilder(
+            Model::getConnection(),
             'user_roles'
         );
         
@@ -51,7 +53,7 @@ trait HasRoles
     {
         $roles = $this->roles();
         foreach ($roles as $role) {
-            if (in_array($role->name, $roleNames)) {
+            if (in_array($role->name, $roleNames, true)) {
                 return true;
             }
         }
@@ -86,8 +88,8 @@ trait HasRoles
         }
 
         // Insert into user_roles table
-        $query = new \Apollo\Core\Database\QueryBuilder(
-            \Apollo\Core\Database\Model::getConnection(),
+        $query = new QueryBuilder(
+            Model::getConnection(),
             'user_roles'
         );
         
@@ -115,8 +117,8 @@ trait HasRoles
         }
 
         // Delete from user_roles table
-        $query = new \Apollo\Core\Database\QueryBuilder(
-            \Apollo\Core\Database\Model::getConnection(),
+        $query = new QueryBuilder(
+            Model::getConnection(),
             'user_roles'
         );
         
@@ -133,8 +135,8 @@ trait HasRoles
     public function syncRoles(array $roleNames, ?int $assignedBy = null): bool
     {
         // Remove all current roles
-        $query = new \Apollo\Core\Database\QueryBuilder(
-            \Apollo\Core\Database\Model::getConnection(),
+        $query = new QueryBuilder(
+            Model::getConnection(),
             'user_roles'
         );
         $query->where('user_id', $this->id)->delete();
@@ -152,9 +154,13 @@ trait HasRoles
      */
     public function hasPermission(string $permission): bool
     {
-        return $this->roles()->get()->some(function ($role) use ($permission) {
-            return $role->hasPermission($permission);
-        });
+        $roles = $this->roles();
+        foreach ($roles as $role) {
+            if ($role->hasPermission($permission)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**
@@ -179,7 +185,7 @@ trait HasRoles
         
         foreach ($this->roles() as $role) {
             if ($role->permissions) {
-                $permissions = array_merge($permissions, $role->permissions);
+                $permissions = [...$permissions, ...$role->permissions];
             }
         }
 

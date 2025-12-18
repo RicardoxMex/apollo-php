@@ -4,7 +4,7 @@ namespace Apps\Users\Middleware;
 
 use Apollo\Core\Http\Request;
 use Apollo\Core\Http\Response;
-use Apps\ApolloAuth\Services\AuthService;
+use Apollo\Core\Auth\AuthService;
 
 class Authenticate {
     private AuthService $authService;

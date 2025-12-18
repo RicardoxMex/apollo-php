@@ -1,6 +1,6 @@
 <?php
 
-namespace Apps\ApolloAuth\Models;
+namespace Apollo\Core\Auth;
 
 use Apollo\Core\Database\Model;
 

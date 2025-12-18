@@ -1,9 +1,9 @@
 <?php
 
-namespace Apps\ApolloAuth\Models;
+namespace Apollo\Core\Auth;
 
 use Apollo\Core\Database\Model;
-use Apps\ApolloAuth\Traits\HasRoles;
+use Apollo\Core\Auth\Traits\HasRoles;
 
 class User extends Model
 {
@@ -70,7 +70,7 @@ class User extends Model
      */
     public function hasVerifiedEmail(): bool
     {
-        return !is_null($this->email_verified_at);
+        return $this->email_verified_at !== null;
     }
 
     /**

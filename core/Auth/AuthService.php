@@ -1,13 +1,12 @@
 <?php
 
-namespace Apps\ApolloAuth\Services;
+namespace Apollo\Core\Auth;
 
-use Apps\ApolloAuth\Models\User;
-use Apps\ApolloAuth\Models\UserSession;
-use Apps\ApolloAuth\Services\JWTManager;
-use Apps\ApolloAuth\Exceptions\AuthenticationException;
-use Apps\ApolloAuth\Exceptions\InvalidCredentialsException;
-use Apps\ApolloAuth\Exceptions\UserNotActiveException;
+use Apollo\Core\Auth\User;
+use Apollo\Core\Auth\UserSession;
+use Apollo\Core\Auth\JWTManager;
+use Apollo\Core\Auth\Exceptions\AuthenticationException;
+use Apollo\Core\Auth\Exceptions\UserNotActiveException;
 use Apollo\Core\Http\Request;
 use PDO;
 use Exception;
@@ -25,7 +24,7 @@ class AuthService
         $user = $this->validateCredentials($credentials);
         
         if (!$user) {
-            throw new InvalidCredentialsException('Invalid credentials provided');
+            throw new AuthenticationException('Invalid credentials provided');
         }
 
         if (!$user->isActive()) {
@@ -181,15 +180,8 @@ class AuthService
             $result = $stmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$result) {
-                error_log("❌ Session not found or expired for token_id: " . $payload['jti']);
-                error_log("🔍 Current time: " . $currentTime);
-                
-                // Debug: mostrar sesiones existentes
-                $debugStmt = $connection->prepare("SELECT * FROM user_sessions WHERE token_id = :token_id");
-                $debugStmt->execute(['token_id' => $payload['jti']]);
-                $allSessions = $debugStmt->fetchAll(PDO::FETCH_ASSOC);
-                error_log("🔍 All sessions for token_id: " . json_encode($allSessions));
-                
+                error_log("❌ Session not found or expired for token_id: {$payload['jti']}");
+                error_log("🔍 Current time: {$currentTime}");
                 return null;
             }
             
@@ -197,17 +189,6 @@ class AuthService
             $session = new UserSession();
             $session->attributes = $result;
             $session->exists = true;
-
-            if (!$session) {
-                error_log("❌ Session not found or expired for token_id: " . $payload['jti']);
-                error_log("🔍 Current time: " . $currentTime);
-                
-                // Debug: mostrar sesiones existentes
-                $allSessions = UserSession::where('token_id', $payload['jti'])->get();
-                error_log("🔍 All sessions for token_id: " . json_encode($allSessions->toArray()));
-                
-                return null;
-            }
 
             error_log("✅ Session found: " . json_encode($session->toArray()));
 
@@ -217,7 +198,7 @@ class AuthService
             $userData = $userStmt->fetch(PDO::FETCH_ASSOC);
             
             if (!$userData) {
-                error_log("❌ User not found: " . $payload['sub']);
+                error_log("❌ User not found: {$payload['sub']}");
                 return null;
             }
             
@@ -228,11 +209,11 @@ class AuthService
             $user->exists = true;
             
             if (!$user->isActive()) {
-                error_log("❌ User inactive: " . $user->email . " (status: " . $user->status . ")");
+                error_log("❌ User inactive: {$user->email} (status: {$user->status})");
                 return null;
             }
 
-            error_log("✅ User authenticated: " . $user->email);
+            error_log("✅ User authenticated: {$user->email}");
 
             // Update session last used
             $session->updateLastUsed();

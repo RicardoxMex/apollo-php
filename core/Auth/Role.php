@@ -1,8 +1,9 @@
 <?php
 
-namespace Apps\ApolloAuth\Models;
+namespace Apollo\Core\Auth;
 
 use Apollo\Core\Database\Model;
+use Apollo\Core\Database\QueryBuilder;
 
 class Role extends Model
 {
@@ -34,7 +35,7 @@ class Role extends Model
      */
     public function usersCount(): int
     {
-        $query = new \Apollo\Core\Database\QueryBuilder(
+        $query = new QueryBuilder(
             self::getConnection(),
             'user_roles'
         );
@@ -52,8 +53,8 @@ class Role extends Model
             return false;
         }
 
-        return in_array($permission, $this->permissions) || 
-               in_array('*', $this->permissions);
+        return in_array($permission, $this->permissions, true) || 
+               in_array('*', $this->permissions, true);
     }
 
     /**
@@ -63,7 +64,7 @@ class Role extends Model
     {
         $permissions = $this->permissions ?? [];
         
-        if (!in_array($permission, $permissions)) {
+        if (!in_array($permission, $permissions, true)) {
             $permissions[] = $permission;
             return $this->update(['permissions' => $permissions]);
         }

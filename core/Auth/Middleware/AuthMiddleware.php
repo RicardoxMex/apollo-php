@@ -1,10 +1,10 @@
 <?php
 
-namespace Apps\ApolloAuth\Middleware;
+namespace Apollo\Core\Auth\Middleware;
 
 use Apollo\Core\Http\Request;
 use Apollo\Core\Http\Response;
-use Apps\ApolloAuth\Services\AuthService;
+use Apollo\Core\Auth\AuthService;
 use Closure;
 
 class AuthMiddleware

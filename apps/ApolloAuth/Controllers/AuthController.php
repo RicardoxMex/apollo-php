@@ -5,8 +5,8 @@ namespace Apps\ApolloAuth\Controllers;
 use Apollo\Core\Http\Request;
 use Apollo\Core\Http\Response;
 use Apps\ApolloAuth\Facades\Auth;
-use Apps\ApolloAuth\Models\User;
-use Apps\ApolloAuth\Exceptions\AuthenticationException;
+use Apollo\Core\Auth\User;
+use Apollo\Core\Auth\Exceptions\AuthenticationException;
 use Exception;
 
 class AuthController
@@ -133,7 +133,6 @@ class AuthController
         $user = $request->user();
 
         return Response::json([
-            'success' => true,
             'data' => [
                 'user' => [
                     'id' => $user->id,
