@@ -5,5 +5,5 @@
     "author": "Your Name",
     "prefix": "api/products",
     "providers": [],
-    "routes": []
+    "routes": ["api.php"]
 }
