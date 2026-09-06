@@ -4,49 +4,39 @@ namespace Apps\ApolloAuth\Middleware;
 
 use Apollo\Core\Http\Request;
 use Apollo\Core\Http\Response;
-use Closure;
 
 class RoleMiddleware
 {
-    public function handle(Request $request, Closure $next, ...$roles)
+    private array $requiredRoles;
+
+    public function __construct(array $requiredRoles = [])
+    {
+        $this->requiredRoles = $requiredRoles;
+    }
+
+    public function handle(Request $request, $next)
     {
         $user = $request->user();
 
         if (!$user) {
-            return $this->unauthorizedResponse('Authentication required');
+            return Response::json([
+                'error' => 'Unauthorized',
+                'message' => 'Authentication required'
+            ], 401);
         }
 
-        if (empty($roles)) {
+        if (empty($this->requiredRoles)) {
             return $next($request);
         }
 
-        // Check if user has any of the required roles
-        if (!$user->hasAnyRole($roles)) {
-            return $this->forbiddenResponse('Insufficient permissions');
+        if (!$user->hasAnyRole($this->requiredRoles)) {
+            return Response::json([
+                'error' => 'Forbidden',
+                'message' => 'Insufficient permissions',
+                'required_roles' => $this->requiredRoles
+            ], 403);
         }
 
         return $next($request);
-    }
-
-    /**
-     * Return unauthorized response
-     */
-    private function unauthorizedResponse(string $message): Response
-    {
-        return Response::json([
-            'error' => 'Unauthorized',
-            'message' => $message
-        ], 401);
-    }
-
-    /**
-     * Return forbidden response
-     */
-    private function forbiddenResponse(string $message): Response
-    {
-        return Response::json([
-            'error' => 'Forbidden',
-            'message' => $message
-        ], 403);
     }
 }

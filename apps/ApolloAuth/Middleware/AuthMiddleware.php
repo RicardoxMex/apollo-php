@@ -30,8 +30,9 @@ class AuthMiddleware
             return $this->unauthorizedResponse('Invalid or expired token');
         }
 
-        // Add user to request
+        // Add user to request (ambos accesos: ->user() y attributes['user'])
         $request->setUser($user);
+        $request->attributes['user'] = $user;
 
         return $next($request);
     }

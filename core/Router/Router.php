@@ -261,12 +261,20 @@ class Router
             throw new InvalidArgumentException('Invalid route action: ' . gettype($action));
 
         } catch (\Throwable $e) {
+            // En producción no se exponen mensajes ni nombres internos
+            if (env('APP_DEBUG', false)) {
+                return Response::json([
+                    'error' => 'Action Error',
+                    'message' => $e->getMessage(),
+                    'action' => \is_array($action) ? json_encode($action) : (\is_string($action) ? $action : gettype($action)),
+                    'file' => $e->getFile(),
+                    'line' => $e->getLine()
+                ], 500);
+            }
+
             return Response::json([
-                'error' => 'Action Error',
-                'message' => $e->getMessage(),
-                'action' => \is_array($action) ? json_encode($action) : (\is_string($action) ? $action : gettype($action)),
-                'file' => $e->getFile(),
-                'line' => $e->getLine()
+                'error' => 'Internal Server Error',
+                'message' => 'Something went wrong',
             ], 500);
         }
     }

@@ -1,5 +1,5 @@
 <?php
-// apps/users/UsersServiceProvider.php
+// apps/Users/Providers/UsersServiceProvider.php
 
 namespace Apps\Users\Providers;
 
@@ -7,8 +7,6 @@ use Apollo\Core\Container\ServiceProvider;
 use Apps\Users\Controllers\UserController;
 use Apps\Users\Services\UserService;
 use Apps\Users\Repositories\UserRepository;
-use Apps\Users\Middleware\Authenticate;
-use Apps\Users\Middleware\RoleMiddleware;
 use Apps\Users\Middleware\LoggingMiddleware;
 use Apps\Users\Middleware\CorsMiddleware;
 
@@ -29,11 +27,7 @@ class UsersServiceProvider extends ServiceProvider {
             new UserController($container, $container->make(UserService::class))
         );
         
-        // Registrar middlewares
-        $this->container->bind('auth', fn($container) => new Authenticate());
-        $this->container->bind('role', fn($container) => new RoleMiddleware());
-        $this->container->bind('role.admin', fn($container) => new RoleMiddleware(['admin']));
-        $this->container->bind('role.user', fn($container) => new RoleMiddleware(['user', 'admin']));
+        // Middlewares propios de esta app (auth/roles se resuelven desde ApolloAuth)
         $this->container->bind('logging', fn($container) => new LoggingMiddleware());
         $this->container->bind('cors', fn($container) => new CorsMiddleware());
     }

@@ -10,7 +10,8 @@ if (!function_exists('auth')) {
      */
     function auth(?string $guard = null): AuthService
     {
-        return app('auth');
+        // Resolver por clase (el alias 'auth' pertenece al middleware)
+        return app(AuthService::class);
     }
 }
 

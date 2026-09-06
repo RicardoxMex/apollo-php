@@ -7,6 +7,7 @@ use Apps\ApolloAuth\Models\UserSession;
 use Apps\ApolloAuth\Exceptions\AuthenticationException;
 use Apps\ApolloAuth\Exceptions\InvalidCredentialsException;
 use Apps\ApolloAuth\Exceptions\UserNotActiveException;
+use Apollo\Core\Auth\JWTManager;
 use Apollo\Core\Http\Request;
 use Exception;
 

@@ -12,20 +12,23 @@ class ApolloAuthServiceProvider extends ServiceProvider
 {
     public function register(): void
     {
-        // Register AuthService as singleton
+        // AuthService singleton (la fachada Auth resuelve por clase)
         $this->container->singleton(AuthService::class, function ($app) {
             return new AuthService();
         });
 
-        // Register Auth facade
-        $this->container->singleton('auth', function ($app) {
-            return $app->make(AuthService::class);
-        });
-
-        // Register middleware
+        // AuthMiddleware singleton (usa el AuthService)
         $this->container->singleton(AuthMiddleware::class, function ($app) {
             return new AuthMiddleware($app->make(AuthService::class));
         });
+
+        // Alias de middleware: 'auth' = JWT real de ApolloAuth
+        $this->container->bind('auth', AuthMiddleware::class);
+
+        // Alias de roles (según convención de las rutas); 'role' se omite a propósito
+        // para que un uso sin rol explícito falle en voz alta en lugar de pasar en silencio
+        $this->container->bind('role.admin', fn($app) => new RoleMiddleware(['admin']));
+        $this->container->bind('role.user', fn($app) => new RoleMiddleware(['user', 'admin']));
 
         $this->container->singleton(RoleMiddleware::class, function ($app) {
             return new RoleMiddleware();
@@ -38,15 +41,6 @@ class ApolloAuthServiceProvider extends ServiceProvider
 
     public function boot(): void
     {
-        // Register middleware aliases
-        $router = $this->container->make('router');
-        
-        if (method_exists($router, 'aliasMiddleware')) {
-            $router->aliasMiddleware('auth', AuthMiddleware::class);
-            $router->aliasMiddleware('role', RoleMiddleware::class);
-            $router->aliasMiddleware('permission', PermissionMiddleware::class);
-        }
-
         // Load helpers
         $this->loadHelpers();
     }

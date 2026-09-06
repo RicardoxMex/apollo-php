@@ -65,7 +65,7 @@ class Pipeline {
                     if ($passable instanceof Request) {
                         return Response::json([
                             'error' => 'Middleware Error',
-                            'message' => $e->getMessage()
+                            'message' => env('APP_DEBUG', false) ? $e->getMessage() : 'Something went wrong'
                         ], 500);
                     }
                     
@@ -109,7 +109,7 @@ class Pipeline {
                 if ($passable instanceof Request) {
                     return Response::json([
                         'error' => 'Middleware Error',
-                        'message' => $e->getMessage()
+                        'message' => env('APP_DEBUG', false) ? $e->getMessage() : 'Something went wrong'
                     ], 500);
                 }
                 throw $e;

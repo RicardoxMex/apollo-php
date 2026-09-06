@@ -45,13 +45,14 @@ class Kernel {
     
     private function handleException(Throwable $e): Response {
         $status = method_exists($e, 'getStatusCode') ? $e->getStatusCode() : 500;
-        
+        $debug = env('APP_DEBUG', false);
+
         $data = [
             'error' => 'Internal Server Error',
-            'message' => $_ENV['APP_DEBUG'] ? $e->getMessage() : 'Something went wrong',
+            'message' => $debug ? $e->getMessage() : 'Something went wrong',
         ];
         
-        if ($_ENV['APP_DEBUG']) {
+        if ($debug) {
             $data['trace'] = $e->getTraceAsString();
             $data['file'] = $e->getFile();
             $data['line'] = $e->getLine();

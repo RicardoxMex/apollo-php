@@ -19,8 +19,8 @@ class JWTManager
         if (self::$secret === null) {
             self::$secret = config('auth.jwt.secret_key');
             self::$algorithm = config('auth.jwt.algorithm', 'HS256');
-            self::$issuer = config('auth.jwt.issuer', 'tu-api.com');
-            self::$audience = config('auth.jwt.audience', 'api-client');
+            self::$issuer = config('auth.jwt.issuer', 'apollo-api.local');
+            self::$audience = config('auth.jwt.audience', 'apollo-client');
             self::$expiry = config('auth.jwt.expiry', 3600);
         }
     }
