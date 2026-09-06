@@ -12,8 +12,8 @@
     ],
     "middleware": {
         "auth": "Apps\\ApolloAuth\\Middleware\\AuthMiddleware",
-        "role": "Apps\\ApolloAuth\\Middleware\\RoleMiddleware",
-        "permission": "Apps\\ApolloAuth\\Middleware\\PermissionMiddleware"
+        "role": "Apollo\\Core\\Auth\\Middleware\\RoleMiddleware",
+        "permission": "Apollo\\Core\\Auth\\Middleware\\PermissionMiddleware"
     },
     "dependencies": [],
     "author": "Apollo Framework",

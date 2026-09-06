@@ -16,12 +16,19 @@
 > JWT real: los tokens se obtienen vía `POST /api/auth/login` y requieren una sesión activa
 > en la tabla `user_sessions`.
 
-### 2. **RoleMiddleware** - Control de Roles
-- **Propósito**: Verificar permisos basados en roles del usuario autenticado (`hasAnyRole`)
-- **Ubicación**: `apps/ApolloAuth/Middleware/RoleMiddleware.php`
-- **Variantes registradas** (en `ApolloAuthServiceProvider`):
+### 2. **RoleMiddleware / PermissionMiddleware** - Módulo de acceso del core
+- **Propósito**: gates de roles y permisos sobre el usuario autenticado (`hasAnyRole` / `hasAnyPermission`)
+- **Ubicación**: `core/Auth/Middleware/` (`Apollo\Core\Auth\Middleware\RoleMiddleware`, `PermissionMiddleware`)
+- **Activable por configuración**: `config('auth.access.enabled')` (env `AUTH_ACCESS_ENABLED`).
+  Si está desactivado, ningún gate se registra (tablas `roles`/`permissions` y pivots no requeridas).
+  El modelo de rol se resuelve desde `config('auth.access.role_model')` y el de permiso desde
+  `config('auth.access.permission_model')` (defaults: core). Los permisos viven en la tabla
+  `permissions` y se enlazan por la pivot `role_permissions` (ya no en JSON dentro del rol).
+- **Alias registrados** (en `core/Providers/AppServiceProvider`, gated):
   - `role.admin`: Solo administradores
   - `role.user`: Usuarios y administradores
+- Para permisos, registra alias con listas propias:
+  `$container->bind('permission.moderate', fn($app) => new PermissionMiddleware(['users.view']))`
 
 ### 3. **LoggingMiddleware** - Registro de Actividad
 - **Propósito**: Registrar requests y responses
@@ -105,10 +112,13 @@ curl -H "Authorization: Bearer {token}" \
 
 ### Registro en ServiceProviders
 ```php
-// El contrato (auth + roles) vive en apps/ApolloAuth/ApolloAuthServiceProvider.php
+// El contrato (auth + roles) vive en el core (módulo de acceso, gated por config)
+// core/Providers/AppServiceProvider.php (si config('auth.access.enabled'))
+$this->container->bind('role.admin', fn($app) => new \Apollo\Core\Auth\Middleware\RoleMiddleware(['admin']));
+$this->container->bind('role.user', fn($app) => new \Apollo\Core\Auth\Middleware\RoleMiddleware(['user', 'admin']));
+
+// La autenticación JWT vive en apps/ApolloAuth/ApolloAuthServiceProvider.php
 $this->container->bind('auth', AuthMiddleware::class);
-$this->container->bind('role.admin', fn($app) => new RoleMiddleware(['admin']));
-$this->container->bind('role.user', fn($app) => new RoleMiddleware(['user', 'admin']));
 
 // Los middlewares propios de la app Users (logging/cors) viven en
 // apps/Users/Providers/UsersServiceProvider.php

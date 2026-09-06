@@ -3,7 +3,7 @@
 namespace Apps\ApolloAuth\Models;
 
 use Apollo\Core\Database\Model;
-use Apps\ApolloAuth\Traits\HasRoles;
+use Apollo\Core\Auth\Traits\HasRoles;
 
 class User extends Model
 {

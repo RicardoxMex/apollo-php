@@ -4,8 +4,10 @@ namespace Apps\ApolloAuth\Controllers;
 
 use Apollo\Core\Http\Request;
 use Apollo\Core\Http\Response;
+use Apollo\Core\Auth\Models\Role;
+use Apollo\Core\Database\QueryBuilder;
 use Apps\ApolloAuth\Models\User;
-use Apps\ApolloAuth\Models\Role;
+use Apollo\Core\Database\Model as BaseModel;
 use Exception;
 
 class AdminController
@@ -309,9 +311,10 @@ class AdminController
                             'name' => $role->name,
                             'display_name' => $role->display_name,
                             'description' => $role->description,
-                            'permissions' => $role->permissions,
+                            'permissions' => $role->permissionNames(),
                             'is_system' => $role->is_system,
-                            'users_count' => $role->users()->count()
+                            'users_count' => (new QueryBuilder(BaseModel::getConnection(), 'user_roles'))
+                                ->where('role_id', $role->id)->count()
                         ];
                     })
                 ]
@@ -321,6 +324,260 @@ class AdminController
             return Response::json([
                 'error' => 'Server Error',
                 'message' => 'An error occurred while fetching roles'
+            ], 500);
+        }
+    }
+
+    /**
+     * Create a new role (los roles del sistema no se protegen aquí: usa is_system)
+     */
+    public function storeRole(Request $request): Response
+    {
+        try {
+            $data = $request->json();
+
+            if (!$data || empty($data['name'])) {
+                return Response::json([
+                    'error' => 'Validation Error',
+                    'message' => 'Role name is required'
+                ], 400);
+            }
+
+            if (Role::where('name', $data['name'])->first()) {
+                return Response::json([
+                    'error' => 'Conflict',
+                    'message' => 'Role already exists'
+                ], 409);
+            }
+
+            $role = Role::create([
+                'name' => $data['name'],
+                'display_name' => $data['display_name'] ?? $data['name'],
+                'description' => $data['description'] ?? null,
+                'is_system' => (bool) ($data['is_system'] ?? false),
+            ]);
+
+            if (!empty($data['permissions']) && is_array($data['permissions'])) {
+                $role->syncPermissions($data['permissions']);
+            }
+
+            return Response::json([
+                'success' => true,
+                'data' => ['role' => [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                    'display_name' => $role->display_name,
+                    'permissions' => $role->permissionNames(),
+                ]]
+            ], 201);
+
+        } catch (Exception $e) {
+            return Response::json([
+                'error' => 'Server Error',
+                'message' => 'An error occurred while creating the role'
+            ], 500);
+        }
+    }
+
+    /**
+     * Update role (nombre/descripción/permisos; roles is_system bloqueados)
+     */
+    public function updateRole(Request $request, string $name): Response
+    {
+        try {
+            $role = Role::where('name', $name)->first();
+
+            if (!$role) {
+                return Response::json([
+                    'error' => 'Not Found',
+                    'message' => 'Role not found'
+                ], 404);
+            }
+
+            if ($role->is_system) {
+                return Response::json([
+                    'error' => 'Forbidden',
+                    'message' => 'System roles are not editable'
+                ], 403);
+            }
+
+            $data = $request->json() ?? [];
+            $attrs = [];
+
+            foreach (['display_name', 'description'] as $field) {
+                if (array_key_exists($field, $data)) {
+                    $attrs[$field] = $data[$field];
+                }
+            }
+
+            if (isset($data['name']) && $data['name'] !== $role->name) {
+                if (Role::where('name', $data['name'])->first()) {
+                    return Response::json([
+                        'error' => 'Conflict',
+                        'message' => 'Role name already in use'
+                    ], 409);
+                }
+                $attrs['name'] = $data['name'];
+            }
+
+            if ($attrs) {
+                $role->update($attrs);
+            }
+
+            if (isset($data['permissions']) && is_array($data['permissions'])) {
+                $role->syncPermissions($data['permissions']);
+            }
+
+            return Response::json([
+                'success' => true,
+                'data' => ['role' => [
+                    'id' => $role->id,
+                    'name' => $role->name,
+                    'permissions' => $role->permissionNames(),
+                ]]
+            ]);
+
+        } catch (Exception $e) {
+            return Response::json([
+                'error' => 'Server Error',
+                'message' => 'An error occurred while updating the role'
+            ], 500);
+        }
+    }
+
+    /**
+     * Delete role (bloqueado para is_system)
+     */
+    public function destroyRole(Request $request, string $name): Response
+    {
+        try {
+            $role = Role::where('name', $name)->first();
+
+            if (!$role) {
+                return Response::json([
+                    'error' => 'Not Found',
+                    'message' => 'Role not found'
+                ], 404);
+            }
+
+            if ($role->is_system) {
+                return Response::json([
+                    'error' => 'Forbidden',
+                    'message' => 'System roles cannot be deleted'
+                ], 403);
+            }
+
+            $role->delete();
+
+            return Response::json([
+                'success' => true,
+                'message' => 'Role deleted'
+            ]);
+
+        } catch (Exception $e) {
+            return Response::json([
+                'error' => 'Server Error',
+                'message' => 'An error occurred while deleting the role'
+            ], 500);
+        }
+    }
+
+    /**
+     * List all permissions (catálogo)
+     */
+    public function permissions(Request $request): Response
+    {
+        try {
+            $permissions = \Apollo\Core\Auth\Models\Permission::orderBy('name')->get();
+
+            return Response::json([
+                'success' => true,
+                'data' => [
+                    'permissions' => array_map(fn($p) => [
+                        'id' => $p->id,
+                        'name' => $p->name,
+                        'display_name' => $p->display_name,
+                        'is_system' => $p->is_system,
+                    ], $permissions)
+                ]
+            ]);
+
+        } catch (Exception $e) {
+            return Response::json([
+                'error' => 'Server Error',
+                'message' => 'An error occurred while fetching permissions'
+            ], 500);
+        }
+    }
+
+    /**
+     * Add permissions to a role
+     */
+    public function addRolePermissions(Request $request, string $role): Response
+    {
+        try {
+            $roleModel = Role::where('name', $role)->first();
+
+            if (!$roleModel) {
+                return Response::json([
+                    'error' => 'Not Found',
+                    'message' => 'Role not found'
+                ], 404);
+            }
+
+            $data = $request->json() ?? [];
+            $permissions = $data['permissions'] ?? [];
+
+            if (!is_array($permissions) || empty($permissions)) {
+                return Response::json([
+                    'error' => 'Validation Error',
+                    'message' => 'permissions[] is required'
+                ], 400);
+            }
+
+            foreach ($permissions as $permission) {
+                $roleModel->addPermission((string) $permission);
+            }
+
+            return Response::json([
+                'success' => true,
+                'data' => ['permissions' => $roleModel->permissionNames()]
+            ]);
+
+        } catch (Exception $e) {
+            return Response::json([
+                'error' => 'Server Error',
+                'message' => 'An error occurred while adding permissions'
+            ], 500);
+        }
+    }
+
+    /**
+     * Remove a permission from a role
+     */
+    public function removeRolePermission(Request $request, string $role, string $permission): Response
+    {
+        try {
+            $roleModel = Role::where('name', $role)->first();
+
+            if (!$roleModel) {
+                return Response::json([
+                    'error' => 'Not Found',
+                    'message' => 'Role not found'
+                ], 404);
+            }
+
+            $roleModel->removePermission($permission);
+
+            return Response::json([
+                'success' => true,
+                'data' => ['permissions' => $roleModel->permissionNames()]
+            ]);
+
+        } catch (Exception $e) {
+            return Response::json([
+                'error' => 'Server Error',
+                'message' => 'An error occurred while removing the permission'
             ], 500);
         }
     }

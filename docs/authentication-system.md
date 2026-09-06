@@ -20,22 +20,33 @@ ApolloAuth es una aplicación modular completa para el framework Apollo que prop
 ### 2. roles
 - Roles del sistema con permisos
 - Roles del sistema no editables
-- Permisos en formato JSON
+- Los permisos ya NO viven aquí: cada permiso es un registro de la tabla `permissions`
+  y se enlaza por la pivot `role_permissions` (migraciones 007–008; la columna JSON
+  de la 002 fue retirada — no hay migración de datos porque no hay DB desplegada)
+- `is_system = true` → no editable/borrable vía API
 
 ### 3. user_roles
 - Relación many-to-many entre usuarios y roles
 - Auditoría de asignación
 
-### 4. user_sessions
+### 4. permissions
+- Permisos individuales (`name` único, p. ej. `users.view`, `*` = superpermiso)
+- Catálogo consultable vía `GET /api/auth/admin/permissions`
+
+### 5. role_permissions
+- Pivot many-to-many rol ↔ permiso (`role_id` + `permission_id`, único conjunto)
+- Cascada: borrar rol/permiso limpia sus enlaces
+
+### 6. user_sessions
 - Gestión de sesiones JWT
 - Información del dispositivo
 - Control de revocación
 
-### 5. password_resets
+### 7. password_resets
 - Tokens para reseteo de contraseñas
 - Control de expiración y uso
 
-### 6. rate_limits
+### 8. rate_limits
 - Control de límites de intentos
 - Por IP, usuario, tipo de acción
 

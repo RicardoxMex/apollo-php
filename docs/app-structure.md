@@ -147,12 +147,11 @@ Los middlewares deben:
 2. Registrarse en el ServiceProvider
 3. Implementar el método `handle(Request $request, Closure $next)`
 
-Ejemplo de registro (contrato de middleware centralizado en ApolloAuth):
+Ejemplo de registro (contrato de middleware centralizado en el módulo de acceso del core):
 
 ```php
-// En ApolloAuthServiceProvider::register()
-$this->container->bind('auth', AuthMiddleware::class);
-$this->container->bind('role.admin', fn($app) => new RoleMiddleware(['admin']));
+// En core/Providers/AppServiceProvider::register() — gated por config('auth.access.enabled')
+$this->container->bind('role.admin', fn($app) => new \Apollo\Core\Auth\Middleware\RoleMiddleware(['admin']));
 ```
 
 ## Carga de Apps

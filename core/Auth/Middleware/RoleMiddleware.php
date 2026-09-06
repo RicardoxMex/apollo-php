@@ -1,10 +1,18 @@
 <?php
 
-namespace Apps\ApolloAuth\Middleware;
+namespace Apollo\Core\Auth\Middleware;
 
 use Apollo\Core\Http\Request;
 use Apollo\Core\Http\Response;
 
+/**
+ * RoleMiddleware — gate de roles del core.
+ *
+ * Uso: registrar alias con las listas de roles en un provider (gated por
+ * config('auth.access.enabled')), p. ej.:
+ *   $this->container->bind('role.admin', fn($app) => new RoleMiddleware(['admin']));
+ * Requiere que el request tenga el usuario autenticado ($request->user()).
+ */
 class RoleMiddleware
 {
     private array $requiredRoles;

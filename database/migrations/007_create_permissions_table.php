@@ -7,22 +7,20 @@ return new class extends Migration
 {
     public function up(): void
     {
-        Schema::create('roles', function ($table) {
+        Schema::create('permissions', function ($table) {
             $table->id();
-            $table->string('name', 50)->unique();
-            $table->string('display_name', 100);
+            $table->string('name', 100)->unique(); // "users.view", "*"...
+            $table->string('display_name', 150)->nullable();
             $table->text('description')->nullable();
-            $table->boolean('is_system')->default(false); // Roles del sistema no editables
+            $table->boolean('is_system')->default(false);
             $table->timestamps();
-            
-            // Índices
+
             $table->index('name');
-            $table->index('is_system');
         });
     }
 
     public function down(): void
     {
-        Schema::dropIfExists('roles');
+        Schema::dropIfExists('permissions');
     }
 };

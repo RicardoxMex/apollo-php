@@ -1,70 +1,63 @@
 <?php
 
-use Apps\ApolloAuth\Models\Role;
+use Apollo\Core\Auth\Models\Permission;
+use Apollo\Core\Auth\Models\Role;
 use Apps\ApolloAuth\Models\User;
 
 class RolesSeeder
 {
+    /**
+     * Los permisos viven en la tabla 'permissions' y se enlazan por la pivot
+     * 'role_permissions'. 'admin' tiene '*' (superpermiso).
+     */
     public function run()
     {
-        // Crear roles del sistema
+        $this->ensurePermissions();
+
         $roles = [
-            [
-                'name' => 'admin',
-                'display_name' => 'Administrator',
+            'admin' => [
+                'display' => 'Administrator',
                 'description' => 'Full system access',
                 'permissions' => ['*'],
-                'is_system' => true
             ],
-            [
-                'name' => 'moderator',
-                'display_name' => 'Moderator',
+            'moderator' => [
+                'display' => 'Moderator',
                 'description' => 'Moderate content and users',
-                'permissions' => [
-                    'users.view',
-                    'users.edit',
-                    'content.moderate',
-                    'reports.view'
-                ],
-                'is_system' => true
+                'permissions' => ['users.view', 'users.edit', 'content.moderate', 'reports.view'],
             ],
-            [
-                'name' => 'user',
-                'display_name' => 'User',
+            'user' => [
+                'display' => 'User',
                 'description' => 'Regular user access',
-                'permissions' => [
-                    'profile.view',
-                    'profile.edit',
-                    'content.create',
-                    'content.edit_own'
-                ],
-                'is_system' => true
+                'permissions' => ['profile.view', 'profile.edit', 'content.create', 'content.edit_own'],
             ],
-            [
-                'name' => 'guest',
-                'display_name' => 'Guest',
+            'guest' => [
+                'display' => 'Guest',
                 'description' => 'Limited access for guests',
-                'permissions' => [
-                    'content.view'
-                ],
-                'is_system' => true
-            ]
+                'permissions' => ['content.view'],
+            ],
         ];
 
-        foreach ($roles as $roleData) {
-            // Verificar si el rol ya existe
-            $existingRole = Role::where('name', $roleData['name'])->first();
-            if (!$existingRole) {
-                Role::create($roleData);
-                echo "✅ Rol '{$roleData['name']}' creado\n";
+        foreach ($roles as $name => $data) {
+            $role = Role::where('name', $name)->first();
+
+            if (!$role) {
+                $role = Role::create([
+                    'name' => $name,
+                    'display_name' => $data['display'],
+                    'description' => $data['description'],
+                    'is_system' => true,
+                ]);
+                echo "✅ Rol '{$name}' creado\n";
             } else {
-                echo "⚠️  Rol '{$roleData['name']}' ya existe\n";
+                echo "⚠️  Rol '{$name}' ya existe\n";
             }
+
+            $role->syncPermissions($data['permissions']);
         }
 
         // Crear usuario administrador por defecto
         $existingAdmin = User::where('email', 'admin@apollo.local')->first();
-        
+
         if (!$existingAdmin) {
             $admin = User::create([
                 'username' => 'admin',
@@ -78,7 +71,7 @@ class RolesSeeder
 
             // Asignar rol de admin
             $admin->assignRole('admin');
-            
+
             echo "✅ Usuario admin creado\n";
             echo "Admin credentials: admin@apollo.local / admin123\n";
         } else {
@@ -86,5 +79,25 @@ class RolesSeeder
         }
 
         echo "\n✅ Seeders completados exitosamente!\n";
+    }
+
+    private function ensurePermissions(): void
+    {
+        $catalog = [
+            '*', 'users.view', 'users.edit',
+            'content.moderate', 'reports.view',
+            'profile.view', 'profile.edit',
+            'content.create', 'content.edit_own', 'content.view',
+        ];
+
+        foreach ($catalog as $name) {
+            if (!Permission::where('name', $name)->first()) {
+                Permission::create([
+                    'name' => $name,
+                    'display_name' => $name,
+                    'is_system' => true,
+                ]);
+            }
+        }
     }
 }

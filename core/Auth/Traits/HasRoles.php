@@ -1,32 +1,49 @@
 <?php
 
-namespace Apps\ApolloAuth\Traits;
+namespace Apollo\Core\Auth\Traits;
 
-use Apps\ApolloAuth\Models\Role;
+use Apollo\Core\Auth\Models\Role;
 
+/**
+ * HasRoles — módulo de roles y permisos del core.
+ *
+ * Activable vía config: `config('auth.access.enabled')` (env AUTH_ACCESS_ENABLED).
+ * El modelo de rol se resuelve desde `config('auth.access.role_model')` para que
+ * cada aplicación pueda aportar el suyo sin que el core dependa de clases de apps.
+ */
 trait HasRoles
 {
+    /**
+     * Resolve el modelo de rol configurado (default: Apollo\Core\Auth\Models\Role)
+     */
+    public static function roleModel(): string
+    {
+        return config('auth.access.role_model', Role::class);
+    }
+
     /**
      * Roles relationship
      */
     public function roles()
     {
+        $roleModel = static::roleModel();
+
         // Obtener roles del usuario desde la tabla pivot
         $query = new \Apollo\Core\Database\QueryBuilder(
             \Apollo\Core\Database\Model::getConnection(),
             'user_roles'
         );
-        
+
         $userRoles = $query->where('user_id', $this->id)->get();
         $roleIds = array_column($userRoles, 'role_id');
-        
+
         if (empty($roleIds)) {
             return [];
         }
-        
+
         // Obtener los roles
-        $roles = Role::query()->whereIn('id', $roleIds)->get();
-        
+        $roles = $roleModel::query()->whereIn('id', $roleIds)->get();
+
         return $roles;
     }
 
@@ -35,12 +52,12 @@ trait HasRoles
      */
     public function hasRole(string $roleName): bool
     {
-        $roles = $this->roles();
-        foreach ($roles as $role) {
+        foreach ($this->roles() as $role) {
             if ($role->name === $roleName) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -49,12 +66,12 @@ trait HasRoles
      */
     public function hasAnyRole(array $roleNames): bool
     {
-        $roles = $this->roles();
-        foreach ($roles as $role) {
+        foreach ($this->roles() as $role) {
             if (in_array($role->name, $roleNames)) {
                 return true;
             }
         }
+
         return false;
     }
 
@@ -64,9 +81,11 @@ trait HasRoles
     public function hasAllRoles(array $roleNames): bool
     {
         $userRoles = [];
+
         foreach ($this->roles() as $role) {
             $userRoles[] = $role->name;
         }
+
         return empty(array_diff($roleNames, $userRoles));
     }
 
@@ -75,8 +94,9 @@ trait HasRoles
      */
     public function assignRole(string $roleName, ?int $assignedBy = null): bool
     {
-        $role = Role::where('name', $roleName)->first();
-        
+        $roleModel = static::roleModel();
+        $role = $roleModel::where('name', $roleName)->first();
+
         if (!$role) {
             return false;
         }
@@ -90,7 +110,7 @@ trait HasRoles
             \Apollo\Core\Database\Model::getConnection(),
             'user_roles'
         );
-        
+
         $query->insert([
             'user_id' => $this->id,
             'role_id' => $role->id,
@@ -108,8 +128,9 @@ trait HasRoles
      */
     public function removeRole(string $roleName): bool
     {
-        $role = Role::where('name', $roleName)->first();
-        
+        $roleModel = static::roleModel();
+        $role = $roleModel::where('name', $roleName)->first();
+
         if (!$role) {
             return false;
         }
@@ -119,7 +140,7 @@ trait HasRoles
             \Apollo\Core\Database\Model::getConnection(),
             'user_roles'
         );
-        
+
         $query->where('user_id', $this->id)
               ->where('role_id', $role->id)
               ->delete();
@@ -152,9 +173,13 @@ trait HasRoles
      */
     public function hasPermission(string $permission): bool
     {
-        return $this->roles()->get()->some(function ($role) use ($permission) {
-            return $role->hasPermission($permission);
-        });
+        foreach ($this->roles() as $role) {
+            if ($role->hasPermission($permission)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**
@@ -167,6 +192,7 @@ trait HasRoles
                 return true;
             }
         }
+
         return false;
     }
 
@@ -176,11 +202,9 @@ trait HasRoles
     public function getAllPermissions(): array
     {
         $permissions = [];
-        
+
         foreach ($this->roles() as $role) {
-            if ($role->permissions) {
-                $permissions = array_merge($permissions, $role->permissions);
-            }
+            $permissions = array_merge($permissions, $role->permissionNames());
         }
 
         return array_unique($permissions);

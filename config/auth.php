@@ -45,4 +45,21 @@ return [
         'cleanup_expired' => true,
         'cleanup_interval' => 3600, // 1 hora
     ],
+
+    /*
+    |--------------------------------------------------------------------------
+    | Roles & Permissions (módulo de acceso del core)
+    |--------------------------------------------------------------------------
+    |
+    | Habilita el trait HasRoles, RoleMiddleware y PermissionMiddleware de
+    | Apollo\Core\Auth (gates 'role.admin' / 'role.user'). Si está desactivado,
+    | no se registra ningún alias y el módulo queda inerte (las tablas roles /
+    | user_roles no son necesarias).
+    |
+    */
+    'access' => [
+        'enabled' => env('AUTH_ACCESS_ENABLED', true),
+        'role_model' => \Apollo\Core\Auth\Models\Role::class,
+        'permission_model' => \Apollo\Core\Auth\Models\Permission::class,
+    ],
 ];

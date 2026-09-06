@@ -17,6 +17,12 @@ class AppServiceProvider extends ServiceProvider {
             ]);
             return $kernel;
         });
+
+        // Módulo de roles y permisos (core) — activable vía config('auth.access.enabled')
+        if (config('auth.access.enabled', true)) {
+            $this->container->bind('role.admin', fn($app) => new \Apollo\Core\Auth\Middleware\RoleMiddleware(['admin']));
+            $this->container->bind('role.user', fn($app) => new \Apollo\Core\Auth\Middleware\RoleMiddleware(['user', 'admin']));
+        }
         
         // El router ya está registrado en Application.php
         // No necesitamos registrarlo aquí

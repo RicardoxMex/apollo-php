@@ -115,4 +115,30 @@ class ApiSmokeTest extends TestCase
         $this->assertSame(401, $status);
         $this->assertSame('Unauthorized', $body['error']);
     }
+
+    public function test_roles_and_permissions_admin_endpoints_require_auth(): void
+    {
+        [$status] = $this->dispatch('GET', '/api/auth/admin/roles');
+        $this->assertSame(401, $status);
+
+        [$status] = $this->dispatch('POST', '/api/auth/admin/roles');
+        $this->assertSame(401, $status);
+
+        [$status] = $this->dispatch('GET', '/api/auth/admin/permissions');
+        $this->assertSame(401, $status);
+
+        [$status] = $this->dispatch('POST', '/api/auth/admin/roles/admin/permissions');
+        $this->assertSame(401, $status);
+
+        [$status] = $this->dispatch('DELETE', '/api/auth/admin/roles/support/permissions/users.view');
+        $this->assertSame(401, $status);
+    }
+
+    public function test_core_access_module_registers_role_gates(): void
+    {
+        // Módulo de acceso del core activo por defecto: los gates resuelven
+        $roleAdmin = $this->app()->make('role.admin');
+
+        $this->assertInstanceOf(\Apollo\Core\Auth\Middleware\RoleMiddleware::class, $roleAdmin);
+    }
 }

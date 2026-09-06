@@ -5,8 +5,6 @@ namespace Apps\ApolloAuth;
 use Apollo\Core\Container\ServiceProvider;
 use Apps\ApolloAuth\Services\AuthService;
 use Apps\ApolloAuth\Middleware\AuthMiddleware;
-use Apps\ApolloAuth\Middleware\RoleMiddleware;
-use Apps\ApolloAuth\Middleware\PermissionMiddleware;
 
 class ApolloAuthServiceProvider extends ServiceProvider
 {
@@ -25,18 +23,9 @@ class ApolloAuthServiceProvider extends ServiceProvider
         // Alias de middleware: 'auth' = JWT real de ApolloAuth
         $this->container->bind('auth', AuthMiddleware::class);
 
-        // Alias de roles (según convención de las rutas); 'role' se omite a propósito
-        // para que un uso sin rol explícito falle en voz alta en lugar de pasar en silencio
-        $this->container->bind('role.admin', fn($app) => new RoleMiddleware(['admin']));
-        $this->container->bind('role.user', fn($app) => new RoleMiddleware(['user', 'admin']));
-
-        $this->container->singleton(RoleMiddleware::class, function ($app) {
-            return new RoleMiddleware();
-        });
-
-        $this->container->singleton(PermissionMiddleware::class, function ($app) {
-            return new PermissionMiddleware();
-        });
+        // NOTA: los gates de roles/permisos ('role.admin', 'role.user') viven en el
+        // módulo de acceso del core (core/Providers/AppServiceProvider), activable
+        // vía config('auth.access.enabled').
     }
 
     public function boot(): void
