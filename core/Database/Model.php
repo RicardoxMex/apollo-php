@@ -203,7 +203,9 @@ abstract class Model
      */
     public static function find($id): ?static
     {
-        $result = static::query()->where('id', $id)->first();
+        // QueryBuilder sin modelClass: first() devuelve array plano (evita re-envolver un Model)
+        $query = new QueryBuilder(self::getConnection(), (new static())->getTable());
+        $result = $query->where('id', $id)->first();
         
         if (!$result) {
             return null;
@@ -222,7 +224,8 @@ abstract class Model
      */
     public static function all(): array
     {
-        $results = static::query()->get();
+        $query = new QueryBuilder(self::getConnection(), (new static())->getTable());
+        $results = $query->get();
         $models = [];
 
         foreach ($results as $result) {
@@ -493,11 +496,9 @@ abstract class Model
         $foreignPivotKey = $foreignPivotKey ?? strtolower(class_basename(static::class)) . '_id';
         $relatedPivotKey = $relatedPivotKey ?? strtolower(class_basename($related)) . '_id';
 
-        // Get pivot records
-        $pivots = static::query()
-            ->table($table)
-            ->where($foreignPivotKey, $this->getAttribute($this->primaryKey))
-            ->get();
+        // Get pivot records (como arrays planos, sin modelClass)
+        $pivotQuery = new QueryBuilder(self::getConnection(), $table);
+        $pivots = $pivotQuery->where($foreignPivotKey, $this->getAttribute($this->primaryKey))->get();
 
         $relatedIds = array_column($pivots, $relatedPivotKey);
         

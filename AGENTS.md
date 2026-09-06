@@ -22,7 +22,7 @@ CRITICAL: Read `@.ai/AGENTS.md` immediately — before answering or acting on an
 ## About this repository
 
 - **What:** Apollo Framework — mini-framework PHP para APIs REST modulares (DRF-inspired). Modular apps (`apps/`: Users, Products, ApolloAuth) over an in-house kernel (`core/`: Application, Config, Container DI, Router, Http, Database, Auth JWT, Console). MIT.
-- **Stack:** PHP >= 8.3, Composer (PSR-4: `Apollo\Core\` → `core/`, `Apps\` → `apps/`, `Tests\` → `tests/`), MySQL, JWT auth, phpdotenv; dev: phpunit ^10.5 + mockery (no suite yet). No frontend, no deployment config.
+- **Stack:** PHP >= 8.3, Composer (PSR-4: `Apollo\Core\` → `core/`, `Apps\` → `apps/`, `Tests\` → `tests/`), **MySQL o SQLite** (drivers intercambiables, `DB_DRIVER`/`DB_CONNECTION`; SQLite: `database/*.sqlite` o `:memory:`, requiere `extension=pdo_sqlite`; `setup_database.php` corre todas las migraciones `*.php` ordenadas), JWT auth, phpdotenv; dev: phpunit ^10.5 + mockery (suite ~48 sin DB + integración SQLite opcional). No frontend, no deployment config.
 - **Commands:** `composer install` · `composer test` (phpunit) · `composer start` (`php -S localhost:8000 -t public`) · `php apollo help` (CLI: `route:list`, `make:controller`, `make:middleware`, `system:report`, `test`) · dev scripts `php setup_database.php`, `php run_seeders.php`, `php test_middleware.php`.
 - **Language:** user docs (`docs/`) and most inline comments are Spanish; `.ai/` artifacts stay English. Match the file you touch.
 - **Knowledge:** `.ai/project/context.md` is the durable project knowledge (stack, commands, gotchas) — read it before planning work. User manual index: `docs/README.md`.

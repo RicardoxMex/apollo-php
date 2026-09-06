@@ -2,3 +2,4 @@
 /.ai/
 .env
 /.phpunit.cache/
+/database/*.sqlite

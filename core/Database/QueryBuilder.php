@@ -48,8 +48,9 @@ class QueryBuilder {
         }
         
         $placeholder = 'param_' . count($this->bindings);
-        $this->queryParts['where'][] = "{$column} {$operator} :{$placeholder}";
-        $this->bindings[$placeholder] = $value;
+        $prefix = empty($this->queryParts['where']) ? '' : 'AND ';
+        $this->queryParts['where'][] = "{$prefix}{$column} {$operator} :{$placeholder}";
+        $this->bindings[$placeholder] = is_bool($value) ? (int) $value : $value;
         
         return $this;
     }
@@ -62,7 +63,7 @@ class QueryBuilder {
         
         $placeholder = 'param_' . count($this->bindings);
         $this->queryParts['where'][] = "OR {$column} {$operator} :{$placeholder}";
-        $this->bindings[$placeholder] = $value;
+        $this->bindings[$placeholder] = is_bool($value) ? (int) $value : $value;
         
         return $this;
     }
@@ -76,10 +77,11 @@ class QueryBuilder {
         foreach ($values as $i => $value) {
             $placeholder = 'param_' . count($this->bindings);
             $placeholders[] = ":{$placeholder}";
-            $this->bindings[$placeholder] = $value;
+            $this->bindings[$placeholder] = is_bool($value) ? (int) $value : $value;
         }
 
-        $this->queryParts['where'][] = "{$column} IN (" . implode(', ', $placeholders) . ")";
+        $prefix = empty($this->queryParts['where']) ? '' : 'AND ';
+        $this->queryParts['where'][] = "{$prefix}{$column} IN (" . implode(', ', $placeholders) . ")";
         return $this;
     }
     
@@ -176,6 +178,10 @@ class QueryBuilder {
     }
     
     public function insert(array $data): ?string {
+        if (empty($this->queryParts['from'])) {
+            throw new \RuntimeException('QueryBuilder: no table set for insert (get()/first() resetean el builder)');
+        }
+
         $columns = implode(', ', array_keys($data));
         $placeholders = ':' . implode(', :', array_keys($data));
         

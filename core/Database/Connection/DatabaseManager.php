@@ -13,6 +13,17 @@ class DatabaseManager {
     public static function setConfig(array $config): void {
         self::$config = $config;
     }
+
+    public static function getConfig(): array {
+        return self::$config;
+    }
+
+    /**
+     * Driver activo (para que Schema/Blueprint generen DDL compatible)
+     */
+    public static function driver(): string {
+        return self::$config['driver'] ?? self::$config['connection'] ?? 'mysql';
+    }
     
     public static function getConnection(): PDO {
         if (self::$connection === null) {

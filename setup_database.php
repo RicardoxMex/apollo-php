@@ -17,6 +17,7 @@ try {
     // Configurar DatabaseManager con variables de entorno
     DatabaseManager::setConfig([
         'connection' => $_ENV['DB_CONNECTION'] ?? 'mysql',
+        'driver' => $_ENV['DB_DRIVER'] ?? ($_ENV['DB_CONNECTION'] ?? 'mysql'),
         'host' => $_ENV['DB_HOST'] ?? '127.0.0.1',
         'port' => $_ENV['DB_PORT'] ?? 3306,
         'database' => $_ENV['DB_DATABASE'] ?? 'apollo',
@@ -31,21 +32,15 @@ try {
     
     echo "✓ Conexión a base de datos establecida\n";
     
-    // Ejecutar migraciones
+    // Ejecutar migraciones (todas las *.php ordenadas: 001..008)
     echo "Ejecutando migraciones...\n";
-    
-    $migrationFiles = [
-        'database/migrations/001_create_users_table.php',
-        'database/migrations/002_create_roles_table.php',
-        'database/migrations/003_create_user_roles_table.php',
-        'database/migrations/004_create_user_sessions_table.php',
-        'database/migrations/005_create_password_resets_table.php',
-        'database/migrations/006_create_rate_limits_table.php'
-    ];
-    
+
+    $migrationFiles = glob('database/migrations/*.php');
+    sort($migrationFiles);
+
     // Primero eliminar tablas existentes en orden inverso (por las foreign keys)
     echo "Eliminando tablas existentes...\n";
-    $tablesToDrop = ['rate_limits', 'password_resets', 'user_sessions', 'user_roles', 'roles', 'users'];
+    $tablesToDrop = ['rate_limits', 'password_resets', 'user_sessions', 'role_permissions', 'user_roles', 'permissions', 'roles', 'users'];
     foreach ($tablesToDrop as $table) {
         try {
             $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
@@ -54,7 +49,7 @@ try {
             echo "⚠️  No se pudo eliminar {$table}: " . $e->getMessage() . "\n";
         }
     }
-    
+
     echo "\nCreando tablas...\n";
     foreach ($migrationFiles as $file) {
         if (file_exists($file)) {

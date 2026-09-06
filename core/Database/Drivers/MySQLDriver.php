@@ -21,14 +21,20 @@ class MySQLDriver implements DriverInterface
 
     public function getOptions(array $config): array
     {
-        return [
+        $options = [
             \PDO::ATTR_ERRMODE => \PDO::ERRMODE_EXCEPTION,
             \PDO::ATTR_DEFAULT_FETCH_MODE => \PDO::FETCH_ASSOC,
             \PDO::ATTR_EMULATE_PREPARES => false,
             \PDO::ATTR_STRINGIFY_FETCHES => false,
-            \PDO::MYSQL_ATTR_INIT_COMMAND => "SET NAMES {$config['charset']} COLLATE {$config['collation']}",
-            \PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true
+            \PDO::MYSQL_ATTR_USE_BUFFERED_QUERY => true,
         ];
+
+        // Solo cuando la extensión pdo_mysql está cargada (evita constantes indefinidas)
+        if (defined('PDO::MYSQL_ATTR_INIT_COMMAND')) {
+            $options[\PDO::MYSQL_ATTR_INIT_COMMAND] = "SET NAMES {$config['charset']} COLLATE {$config['collation']}";
+        }
+
+        return $options;
     }
 
     public function getLastInsertId(\PDO $pdo, ?string $name = null): string
