@@ -170,3 +170,17 @@ if (!function_exists('response')) {
         return \Apollo\Core\Http\Response::json($data, $status, $headers);
     }
 }
+
+if (!function_exists('realtime')) {
+    /**
+     * Acceso al módulo realtime (RealtimeManager).
+     */
+    function realtime($abstract = null)
+    {
+        if (is_null($abstract)) {
+            return app(\Apollo\Core\Realtime\Support\RealtimeManager::class);
+        }
+
+        return app($abstract);
+    }
+}

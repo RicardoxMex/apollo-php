@@ -39,6 +39,9 @@ class SqliteIntegrationTest extends TestCase
             'database' => ':memory:',
         ]);
 
+        // BD fresca (evita tablas de otros tests con la misma config :memory:)
+        DatabaseManager::disconnect();
+
         self::$pdo = DatabaseManager::getConnection();
 
         $files = glob(dirname(__DIR__, 2) . '/database/migrations/*.php');

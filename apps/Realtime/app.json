@@ -1,0 +1,9 @@
+{
+    "name": "Realtime",
+    "version": "1.0.0",
+    "description": "REST API opcional del módulo realtime (eventos, auth de canales, notificaciones)",
+    "author": "Apollo Framework",
+    "prefix": "v1",
+    "providers": [],
+    "routes": ["api.php"]
+}

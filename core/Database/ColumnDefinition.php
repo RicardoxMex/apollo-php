@@ -7,6 +7,7 @@ class ColumnDefinition
     protected string $name;
     protected string $type;
     protected bool $nullable = false;
+    protected bool $primary = false;
     protected $default = null;
     protected bool $hasDefault = false;
 
@@ -14,6 +15,15 @@ class ColumnDefinition
     {
         $this->name = $name;
         $this->type = $type;
+    }
+
+    /**
+     * Make column the primary key (string/composite PKs)
+     */
+    public function primary(): self
+    {
+        $this->primary = true;
+        return $this;
     }
 
     /**
@@ -79,6 +89,10 @@ class ColumnDefinition
             } else {
                 $sql .= " DEFAULT {$this->default}";
             }
+        }
+
+        if ($this->primary) {
+            $sql .= " PRIMARY KEY";
         }
 
         return $sql;

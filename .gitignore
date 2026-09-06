@@ -3,3 +3,4 @@
 .env
 /.phpunit.cache/
 /database/*.sqlite
+/runtime/
