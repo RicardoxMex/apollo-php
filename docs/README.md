@@ -4,17 +4,21 @@ Bienvenido a la documentación oficial de Apollo Framework, un mini-framework PH
 
 ## Índice de Documentación
 
-### CLI (Command Line Interface)
+### Empezar
+- [**README (raíz: qué es, instalación, comandos, arquitectura)**](../README.md) - Guía completa de inicio
+
+### Guías
 - [**Comandos CLI Personalizados**](cli-commands.md) - Tutorial completo para crear comandos CLI personalizados
+- [**Estructura de Apps**](app-structure.md) - Cómo se compone una app y su `app.json`
+- [**Sistema de Autenticación**](authentication-system.md) - Auth JWT, roles y permisos
+- [**Módulo Realtime**](realtime.md) - WebSockets, canales, notificaciones (opcional)
 
 ### Próximamente
-- Guía de Instalación
-- Arquitectura del Framework
-- Creación de APIs REST
-- Sistema de Middleware
-- Manejo de Rutas
-- Contenedor de Dependencias
-- Testing
+- Creación de APIs REST (paso a paso)
+- Sistema de Middleware (guía propia)
+- Manejo de Rutas (guía propia)
+- Contenedor de Dependencias (guía propia)
+- Testing (guía propia)
 
 ## Comandos CLI Disponibles
 
@@ -45,6 +49,10 @@ php apollo make:seeder ProductSeeder
 # Crear servicio / repositorio en una app
 php apollo make:service ProductService --app=products
 php apollo make:repository ProductRepository --app=products
+
+# Módulo realtime (opcional)
+php apollo realtime:test       # health check
+php apollo realtime:start      # servidor WebSocket (requiere extension=openswoole)
 
 # Generar reporte del sistema
 php apollo system:report
