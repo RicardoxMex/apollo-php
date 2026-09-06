@@ -21,6 +21,9 @@ Bienvenido a la documentación oficial de Apollo Framework, un mini-framework PH
 Apollo Framework incluye un potente sistema CLI similar a Laravel Artisan:
 
 ```bash
+# Crear una nueva app modular (scaffold completo: app.json, controlador, rutas, provider...)
+php apollo make:app Blog
+
 # Listar todas las rutas
 php apollo route:list
 
@@ -33,8 +36,21 @@ php apollo make:middleware ValidationMiddleware --app=users
 # Crear un nuevo modelo
 php apollo make:model Product --app=products
 
+# Crear una migración
+php apollo make:migration create_products_table
+
+# Crear un seeder
+php apollo make:seeder ProductSeeder
+
+# Crear servicio / repositorio en una app
+php apollo make:service ProductService --app=products
+php apollo make:repository ProductRepository --app=products
+
 # Generar reporte del sistema
 php apollo system:report
+
+# Ejecutar self-check del framework (sin DB)
+php apollo test
 
 # Ver ayuda
 php apollo help

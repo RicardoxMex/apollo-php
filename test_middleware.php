@@ -1,5 +1,5 @@
 <?php
-// test_middleware.php - Script para probar middlewares
+// test_middleware.php - Script para probar middlewares (sin DB)
 
 require_once __DIR__ . '/vendor/autoload.php';
 
@@ -18,149 +18,87 @@ echo "============================\n\n";
 try {
     // Crear aplicación
     $app = new Application(__DIR__);
-    
-    // Registrar apps
-    $app->registerApp('users');
-    
-    // Registrar providers del core
-    $app->registerServiceProvider(new Apollo\Core\Providers\AppServiceProvider($app));
-    
-    // Boot service providers
-    $app->bootServiceProviders();
-    
-    echo "✅ Application initialized with middlewares\n\n";
-    
-    // Casos de prueba
-    $testCases = [
-        [
-            'name' => 'Ruta pública (sin middleware)',
-            'method' => 'GET',
-            'path' => '/api/users',
-            'headers' => []
-        ],
-        [
-            'name' => 'Ruta con logging middleware',
-            'method' => 'GET',
-            'path' => '/api/users/test',
-            'headers' => []
-        ],
-        [
-            'name' => 'Ruta protegida sin token',
-            'method' => 'GET',
-            'path' => '/api/users/profile',
-            'headers' => []
-        ],
-        [
-            'name' => 'Ruta protegida con token inválido',
-            'method' => 'GET',
-            'path' => '/api/users/profile',
-            'headers' => ['Authorization' => 'Bearer invalid-token']
-        ],
-        [
-            'name' => 'Ruta protegida con token válido',
-            'method' => 'GET',
-            'path' => '/api/users/profile',
-            'headers' => ['Authorization' => 'Bearer test-token-123']
-        ],
-        [
-            'name' => 'Crear usuario (autenticado)',
-            'method' => 'POST',
-            'path' => '/api/users',
-            'headers' => ['Authorization' => 'Bearer user-token-456']
-        ],
-        [
-            'name' => 'Eliminar usuario (requiere admin)',
-            'method' => 'DELETE',
-            'path' => '/api/users/123',
-            'headers' => ['Authorization' => 'Bearer user-token-456'] // usuario normal
-        ],
-        [
-            'name' => 'Eliminar usuario (con admin)',
-            'method' => 'DELETE',
-            'path' => '/api/users/123',
-            'headers' => ['Authorization' => 'Bearer test-token-123'] // admin
-        ],
-        [
-            'name' => 'Estadísticas (solo admin)',
-            'method' => 'GET',
-            'path' => '/api/users/stats',
-            'headers' => ['Authorization' => 'Bearer test-token-123']
-        ],
-        [
-            'name' => 'Demo con múltiples middlewares',
-            'method' => 'GET',
-            'path' => '/api/users/demo',
-            'headers' => [
-                'Authorization' => 'Bearer demo-token-789',
-                'Origin' => 'https://example.com',
-                'User-Agent' => 'Test Client 1.0'
-            ]
-        ]
-    ];
-    
-    foreach ($testCases as $i => $testCase) {
-        echo "🎯 Test " . ($i + 1) . ": {$testCase['name']}\n";
-        echo "   {$testCase['method']} {$testCase['path']}\n";
-        
-        // Configurar headers
-        foreach ($testCase['headers'] as $header => $value) {
-            $_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $header))] = $value;
-            echo "   {$header}: {$value}\n";
-        }
-        
-        // Configurar request
-        $_SERVER['REQUEST_METHOD'] = $testCase['method'];
-        $_SERVER['REQUEST_URI'] = $testCase['path'];
-        $_SERVER['HTTP_HOST'] = 'localhost';
-        $_SERVER['REMOTE_ADDR'] = '127.0.0.1';
-        
-        $request = Request::capture();
-        
-        // Procesar request
-        $response = $app->handle($request);
-        
-        echo "   Status: {$response->getStatusCode()}\n";
-        
-        $content = json_decode($response->getContent(), true);
-        if (isset($content['message'])) {
-            echo "   Message: {$content['message']}\n";
-        }
-        if (isset($content['error'])) {
-            echo "   Error: {$content['error']}\n";
-        }
-        
-        // Mostrar headers de respuesta interesantes
-        $headers = $response->getHeaders();
-        $interestingHeaders = ['Access-Control-Allow-Origin', 'Access-Control-Allow-Methods'];
-        foreach ($interestingHeaders as $headerName) {
-            if (isset($headers[$headerName])) {
-                echo "   {$headerName}: {$headers[$headerName]}\n";
-            }
-        }
-        
-        echo "\n";
-        
-        // Limpiar headers para el siguiente test
-        foreach ($testCase['headers'] as $header => $value) {
-            unset($_SERVER['HTTP_' . strtoupper(str_replace('-', '_', $header))]);
+
+    // Cargar configuración
+    $config = $app->make('config');
+
+    // Registrar Service Providers del core y de apps (igual que public/index.php)
+    foreach ($config->get('providers.core', []) as $providerClass) {
+        if (class_exists($providerClass)) {
+            $app->registerServiceProvider(new $providerClass($app));
         }
     }
-    
-    echo "✅ Middleware tests completed!\n\n";
-    
-    echo "📋 Available Tokens for Testing:\n";
-    echo "--------------------------------\n";
-    echo "• test-token-123 (admin): Full access\n";
-    echo "• user-token-456 (user): Limited access\n";
-    echo "• demo-token-789 (demo): Demo access\n\n";
-    
-    echo "🔧 How to test manually:\n";
-    echo "------------------------\n";
-    echo "curl -H \"Authorization: Bearer test-token-123\" http://localhost/api/users/profile\n";
-    echo "curl -H \"Authorization: Bearer user-token-456\" -X DELETE http://localhost/api/users/123\n";
-    echo "curl -H \"Origin: https://example.com\" http://localhost/api/users/demo\n";
-    
-} catch (Exception $e) {
+
+    foreach ($config->get('providers.app', []) as $providerClass) {
+        if (class_exists($providerClass)) {
+            $app->registerServiceProvider(new $providerClass($app));
+        }
+    }
+
+    // Registrar apps desde configuración
+    foreach ($config->get('apps.registered', []) as $appName) {
+        $app->registerApp($appName);
+    }
+
+    echo "✅ Application initialized with middlewares\n\n";
+
+    $failures = 0;
+
+    $run = function (string $method, string $path, array $headers = []) use ($app) {
+        $server = [
+            'REQUEST_METHOD' => $method,
+            'REQUEST_URI' => $path,
+            'HTTP_HOST' => 'localhost',
+        ];
+        foreach ($headers as $name => $value) {
+            $server['HTTP_' . strtoupper(str_replace('-', '_', $name))] = $value;
+        }
+        $request = new Request([], [], [], [], [], $server, '');
+        $response = $app->handle($request);
+
+        return [$response->getStatusCode(), json_decode((string) $response->getContent(), true)];
+    };
+
+    $check = function (string $name, int $expected, array $actual) use (&$failures) {
+        $status = $actual[0];
+        $ok = $status === $expected;
+        if (!$ok) {
+            $failures++;
+        }
+        echo ($ok ? "✅" : "❌") . " {$name}: esperado {$expected}, obtenido {$status}\n";
+    };
+
+    // Ruta con logging (sin auth)
+    [$status, $body] = $run('GET', '/api/users/test');
+    $check('Ruta pública con LoggingMiddleware (200)', 200, [$status, $body]);
+
+    // Ruta protegida sin token -> 401
+    [$status, $body] = $run('GET', '/api/users/profile');
+    $check('Ruta protegida sin token (401)', 401, [$status, $body]);
+
+    // Ruta protegida con token inválido -> 401
+    [$status, $body] = $run('GET', '/api/users/profile', ['Authorization' => 'Bearer invalid-token']);
+    $check('Ruta protegida con token inválido (401)', 401, [$status, $body]);
+
+    // Ruta admin sin token -> 401 (se detiene en auth antes de roles)
+    [$status, $body] = $run('GET', '/api/auth/admin/users');
+    $check('Ruta admin sin token (401)', 401, [$status, $body]);
+
+    // Ruta inexistente -> 404
+    [$status, $body] = $run('GET', '/api/no-existe');
+    $check('Ruta inexistente (404)', 404, [$status, $body]);
+
+    echo "\n";
+
+    if ($failures > 0) {
+        echo "❌ {$failures} chequeo(s) fallaron\n";
+        exit(1);
+    }
+
+    echo "✅ Todos los chequeos pasaron\n";
+    exit(0);
+
+} catch (\Throwable $e) {
     echo "❌ Error: " . $e->getMessage() . "\n";
-    echo "Trace: " . $e->getTraceAsString() . "\n";
+    exit(1);
 }
