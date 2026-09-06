@@ -14,7 +14,7 @@ class UsersServiceProvider extends ServiceProvider {
     public function register(): void {
         // Registrar repositorio
         $this->container->bind(UserRepository::class, fn($container) => 
-            new UserRepository($container)
+            new UserRepository()
         );
         
         // Registrar servicio

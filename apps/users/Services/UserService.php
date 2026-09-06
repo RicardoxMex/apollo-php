@@ -1,18 +1,18 @@
 <?php
-// apps/users/Services/UserService.php
+// apps/Users/Services/UserService.php
 
 namespace Apps\Users\Services;
 
 use Apollo\Core\Http\Request;
-use Apps\Users\Models\User;
+use Apps\Users\Repositories\UserRepository;
 
 class UserService
 {
-    private User $user;
+    private UserRepository $user;
 
-    public function __construct()
+    public function __construct(UserRepository $user)
     {
-        $this->user = new User();
+        $this->user = $user;
     }
 
     public function paginate(): array
