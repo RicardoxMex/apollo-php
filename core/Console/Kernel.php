@@ -20,12 +20,23 @@ class Kernel
     {
         $this->commands = [
             'route:list' => Commands\RouteListCommand::class,
+            'make:app' => Commands\MakeAppCommand::class,
             'make:controller' => Commands\MakeControllerCommand::class,
             'make:middleware' => Commands\MakeMiddlewareCommand::class,
+            'make:migration' => Commands\MakeMigrationCommand::class,
+            'make:model' => Commands\MakeModelCommand::class,
+            'make:repository' => Commands\MakeRepositoryCommand::class,
+            'make:seeder' => Commands\MakeSeederCommand::class,
+            'make:service' => Commands\MakeServiceCommand::class,
             'system:report' => Commands\SystemReportCommand::class,
             'test' => Commands\TestCommand::class,
             'help' => Commands\HelpCommand::class,
         ];
+    }
+
+    public function getCommands(): array
+    {
+        return $this->commands;
     }
 
     public function handle(array $argv): int
@@ -54,9 +65,9 @@ class Kernel
         echo "Apollo Framework CLI\n\n";
         echo "Available commands:\n";
         
-        foreach ($this->commands as $name => $class) {
+        foreach ($this->getCommands() as $name => $class) {
             $command = $this->app->make($class);
-            echo "  {$name}    {$command->getDescription()}\n";
+            echo "  " . str_pad($name, 18) . $command->getDescription() . "\n";
         }
     }
 }

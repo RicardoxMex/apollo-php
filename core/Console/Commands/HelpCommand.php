@@ -4,6 +4,7 @@
 namespace Apollo\Core\Console\Commands;
 
 use Apollo\Core\Console\Command;
+use Apollo\Core\Console\Kernel;
 
 class HelpCommand extends Command
 {
@@ -12,18 +13,20 @@ class HelpCommand extends Command
 
     public function handle(): int
     {
+        $kernel = app()->make(Kernel::class);
+
         $this->info('Apollo Framework CLI');
         $this->line();
         $this->line('Usage:');
         $this->line('  php apollo <command>');
         $this->line();
         $this->info('Available commands:');
-        $this->line('  route:list       List all registered routes');
-        $this->line('  make:controller  Create a new controller class');
-        $this->line('  make:middleware  Create a new middleware class');
-        $this->line('  system:report    Generate a system report');
-        $this->line('  test             test');
-        $this->line('  help             Show this help message');
+
+        foreach ($kernel->getCommands() as $name => $class) {
+            $command = app()->make($class);
+            $this->line('  ' . str_pad($name, 18) . $command->getDescription());
+        }
+
         $this->line();
 
         return 0;
