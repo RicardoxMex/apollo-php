@@ -5,14 +5,13 @@
     "timezone": "UTC",
     "locale": "en",
     "apps": [
-        "users",
-        "products"
+        "ApolloAuth",
+        "Users",
+        "Products"
     ],
     "api": {
-        "prefix": "api2",
+        "prefix": "api",
         "version": "v1"
     },
-    "providers": [
-
-    ]
+    "providers": []
 }

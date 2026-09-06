@@ -128,8 +128,26 @@ class Application extends Container
 
         $appPath = $this->make('path.apps') . '/' . $appName;
 
+        // Resolver el directorio de la app con coincidencia case-insensitive
+        // (Windows tolera apps/users vs apps/Users; Linux no)
         if (!is_dir($appPath)) {
-            throw new Exception("App '{$appName}' not found in apps directory");
+            $appsRoot = $this->make('path.apps');
+            $found = null;
+            foreach (scandir($appsRoot) ?: [] as $entry) {
+                if ($entry === '.' || $entry === '..') {
+                    continue;
+                }
+                if (is_dir($appsRoot . '/' . $entry) && strtolower($entry) === strtolower($appName)) {
+                    $found = $entry;
+                    break;
+                }
+            }
+            if ($found) {
+                $appName = $found;
+                $appPath = $appsRoot . '/' . $found;
+            } else {
+                throw new Exception("App '{$appName}' not found in apps directory");
+            }
         }
 
         if (!$this->isConsoleMode()) {

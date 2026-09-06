@@ -1,3 +1,4 @@
 /vendor/
 /.ai/
 .env
+/.phpunit.cache/

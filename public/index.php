@@ -39,7 +39,6 @@ $registeredApps = $config->get('apps.registered', []);
 foreach ($registeredApps as $appName) {
     try {
         $app->registerApp($appName);
-        error_log("✅ App '{$appName}' registered");
     } catch (Exception $e) {
         error_log("⚠️  App '{$appName}' error: " . $e->getMessage());
     }
