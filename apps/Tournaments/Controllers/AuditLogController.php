@@ -19,7 +19,7 @@ class AuditLogController extends Controller
     public function index()
     {
         try {
-            $result = $this->logs->listar(
+            $result = $this->logs->list(
                 $this->request->query('entity_type'),
                 $this->request->query('entity_id') !== null ? (int) $this->request->query('entity_id') : null,
                 (int) $this->request->query('perPage', 25),

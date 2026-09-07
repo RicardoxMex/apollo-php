@@ -4,6 +4,8 @@ namespace Apps\ApolloAuth\Controllers;
 
 use Apollo\Core\Http\Request;
 use Apollo\Core\Http\Response;
+use Apollo\Core\Validation\ValidationException;
+use Apollo\Core\Validation\Validator;
 use Apps\ApolloAuth\Facades\Auth;
 use Apps\ApolloAuth\Models\User;
 use Apps\ApolloAuth\Exceptions\AuthenticationException;
@@ -17,14 +19,13 @@ class AuthController
     public function login(Request $request): Response
     {
         try {
-            $credentials = $request->json();
-            
-            if (!$credentials || !isset($credentials['email'], $credentials['password'])) {
-                return Response::json([
-                    'error' => 'Validation Error',
-                    'message' => 'Email and password are required'
-                ], 400);
-            }
+            $credentials = $request->json() ?? [];
+
+            Validator::make($credentials, [
+                'email'    => 'required|email',
+                'password' => 'required|string',
+                'remember' => 'nullable|boolean',
+            ])->validateOrFail();
 
             $remember = $credentials['remember'] ?? false;
             
@@ -47,6 +48,11 @@ class AuthController
                 ]
             ]);
 
+        } catch (ValidationException $e) {
+            return Response::json([
+                'error' => 'Validation Error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (AuthenticationException $e) {
             return Response::json([
                 'error' => 'Authentication Failed',
@@ -66,18 +72,16 @@ class AuthController
     public function register(Request $request): Response
     {
         try {
-            $data = $request->json();
-            
-            // Validación básica
-            $required = ['username', 'email', 'password'];
-            foreach ($required as $field) {
-                if (!isset($data[$field]) || empty($data[$field])) {
-                    return Response::json([
-                        'error' => 'Validation Error',
-                        'message' => "Field {$field} is required"
-                    ], 400);
-                }
-            }
+            $data = $request->json() ?? [];
+
+            Validator::make($data, [
+                'username'   => 'required|string|min:3|max:50',
+                'email'      => 'required|email|max:120',
+                'password'   => 'required|string|min:6',
+                'first_name' => 'nullable|string|max:60',
+                'last_name'  => 'nullable|string|max:60',
+                'phone'      => 'nullable|string|max:30',
+            ])->validateOrFail();
 
             // Verificar si el usuario ya existe
             $existingUser = User::where('email', $data['email'])
@@ -117,6 +121,11 @@ class AuthController
                 ]
             ], 201);
 
+        } catch (ValidationException $e) {
+            return Response::json([
+                'error' => 'Validation Error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Exception $e) {
             return Response::json([
                 'error' => 'Server Error',

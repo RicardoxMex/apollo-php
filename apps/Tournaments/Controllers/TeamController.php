@@ -4,6 +4,7 @@ namespace Apps\Tournaments\Controllers;
 
 use Apollo\Core\Container\Container;
 use Apollo\Core\Http\Controller;
+use Apollo\Core\Validation\ValidationException;
 use Apps\Tournaments\Services\TeamService;
 
 class TeamController extends Controller
@@ -18,7 +19,7 @@ class TeamController extends Controller
         try {
             return $this->json([
                 'success' => true,
-                'data' => $this->teams->listar($this->request->query('q')),
+                'data' => $this->teams->list($this->request->query('q')),
             ]);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudieron listar los equipos', 'message' => $e->getMessage()], 500);
@@ -28,11 +29,11 @@ class TeamController extends Controller
     public function show($id)
     {
         try {
-            $equipo = $this->teams->mostrar((int) $id);
-            if (!$equipo) {
+            $team = $this->teams->show((int) $id);
+            if (!$team) {
                 return $this->json(['error' => 'Equipo no encontrado'], 404);
             }
-            return $this->json(['success' => true, 'data' => $equipo]);
+            return $this->json(['success' => true, 'data' => $team]);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo obtener el equipo', 'message' => $e->getMessage()], 500);
         }
@@ -41,8 +42,17 @@ class TeamController extends Controller
     public function store()
     {
         try {
-            $equipo = $this->teams->crear($this->actorId(), $this->body());
-            return $this->json(['success' => true, 'data' => $equipo, 'message' => 'Equipo creado'], 201);
+            $data = $this->validate($this->body(), [
+                'name'     => 'required|string|max:100',
+                'contact'  => 'nullable|string|max:255',
+                'image'    => 'nullable|string|max:500',
+                'captains' => 'nullable|array',
+                'players'  => 'nullable|array',
+            ]);
+            $team = $this->teams->create($this->actorId(), $data);
+            return $this->json(['success' => true, 'data' => $team, 'message' => 'Equipo creado'], 201);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
@@ -53,11 +63,20 @@ class TeamController extends Controller
     public function update($id)
     {
         try {
-            $equipo = $this->teams->actualizar($this->actorId(), (int) $id, $this->body());
-            if (!$equipo) {
+            $data = $this->validate($this->body(), [
+                'name'     => 'sometimes|string|max:100',
+                'contact'  => 'sometimes|nullable|string|max:255',
+                'image'    => 'sometimes|nullable|string|max:500',
+                'captains' => 'sometimes|nullable|array',
+                'players'  => 'sometimes|nullable|array',
+            ]);
+            $team = $this->teams->update($this->actorId(), (int) $id, $data);
+            if (!$team) {
                 return $this->json(['error' => 'Equipo no encontrado'], 404);
             }
-            return $this->json(['success' => true, 'data' => $equipo, 'message' => 'Equipo actualizado']);
+            return $this->json(['success' => true, 'data' => $team, 'message' => 'Equipo actualizado']);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
@@ -68,7 +87,7 @@ class TeamController extends Controller
     public function destroy($id)
     {
         try {
-            if (!$this->teams->eliminar($this->actorId(), (int) $id)) {
+            if (!$this->teams->delete($this->actorId(), (int) $id)) {
                 return $this->json(['error' => 'Equipo no encontrado'], 404);
             }
             return $this->json(['success' => true, 'message' => 'Equipo eliminado']);

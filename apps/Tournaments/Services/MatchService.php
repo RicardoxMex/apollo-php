@@ -19,13 +19,13 @@ class MatchService
         return DatabaseManager::getConnection();
     }
 
-    public function listar(int $torneoId): array
+    public function list(int $tournamentId): array
     {
-        $partidos = $this->matches->listWithDetails($torneoId);
+        $matches = $this->matches->listWithDetails($tournamentId);
 
         $pdo = $this->pdo();
-        $ids = array_column($partidos, 'id');
-        $nombres = [];
+        $ids = array_column($matches, 'id');
+        $names = [];
         if ($ids) {
             $in = implode(',', array_fill(0, count($ids), '?'));
             $stmt = $pdo->prepare(
@@ -40,67 +40,67 @@ class MatchService
             );
             $stmt->execute(array_merge($ids, $ids));
             foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $r) {
-                $nombres[(int) $r['participant_id']] = $r['display_name'];
+                $names[(int) $r['participant_id']] = $r['display_name'];
             }
         }
 
-        foreach ($partidos as &$m) {
-            $m['display_a'] = $m['participant_a_id'] !== null ? ($nombres[(int) $m['participant_a_id']] ?? null) : null;
-            $m['display_b'] = $m['participant_b_id'] !== null ? ($nombres[(int) $m['participant_b_id']] ?? null) : null;
+        foreach ($matches as &$m) {
+            $m['display_a'] = $m['participant_a_id'] !== null ? ($names[(int) $m['participant_a_id']] ?? null) : null;
+            $m['display_b'] = $m['participant_b_id'] !== null ? ($names[(int) $m['participant_b_id']] ?? null) : null;
         }
 
-        return $partidos;
+        return $matches;
     }
 
     /**
-     * Actualiza un partido oficial (solo organizador, torneo en live):
-     * estado, fecha, marcadores por stat, stats por jugador y ganador.
-     * Al completar propaga status/ganador al bracket (draw_match) y avanza al
-     * siguiente enfrentamiento (round-trip BRK-03/MVP-B del frontend).
+     * Updates an official match (organizer only, tournament live):
+     * status, date, per-stat scores, per-player stats and winner.
+     * On completion it propagates status/winner to the bracket (draw_match) and
+     * advances to the next fixture (round-trip BRK-03/MVP-B of the frontend).
      */
-    public function actualizar(int $actorId, int $torneoId, int $matchId, array $data, ?Request $request = null): array
+    public function update(int $actorId, int $tournamentId, int $matchId, array $data, ?Request $request = null): array
     {
         $pdo = $this->pdo();
 
         $stmt = $pdo->prepare('SELECT * FROM tournaments WHERE id = ? AND deleted_at IS NULL');
-        $stmt->execute([$torneoId]);
-        $torneo = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$torneo) {
+        $stmt->execute([$tournamentId]);
+        $tournament = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$tournament) {
             throw new \RuntimeException('Torneo no encontrado', 404);
         }
-        if ((int) $torneo['organizer_id'] !== $actorId) {
+        if ((int) $tournament['organizer_id'] !== $actorId) {
             throw new \RuntimeException('No eres el organizador de este torneo', 403);
         }
-        if ($torneo['status'] !== 'live') {
+        if ($tournament['status'] !== 'live') {
             throw new \RuntimeException('Los partidos solo se actualizan con el torneo en vivo', 409);
         }
 
         $stmt = $pdo->prepare('SELECT * FROM matches WHERE id = ? AND tournament_id = ?');
-        $stmt->execute([$matchId, $torneoId]);
+        $stmt->execute([$matchId, $tournamentId]);
         $match = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$match) {
             throw new \RuntimeException('Partido no encontrado', 404);
         }
 
-        $nuevoEstado = $data['status'] ?? $match['status'];
-        if (!in_array($nuevoEstado, ['pending', 'scheduled', 'live', 'completed', 'cancelled'], true)) {
+        $newStatus = $data['status'] ?? $match['status'];
+        if (!in_array($newStatus, ['pending', 'scheduled', 'live', 'completed', 'cancelled'], true)) {
             throw new \InvalidArgumentException('Estado de partido inválido');
         }
 
-        $campos = ['status' => $nuevoEstado];
+        $fields = ['status' => $newStatus];
         if (isset($data['scheduled_at'])) {
-            $campos['scheduled_at'] = $data['scheduled_at'];
+            $fields['scheduled_at'] = $data['scheduled_at'];
         }
-        if ($nuevoEstado === 'live') {
-            $campos['started_at'] = $campos['started_at'] ?? $match['started_at'] ?? date('Y-m-d H:i:s');
+        if ($newStatus === 'live') {
+            $fields['started_at'] = $fields['started_at'] ?? $match['started_at'] ?? date('Y-m-d H:i:s');
         }
-        if (in_array($nuevoEstado, ['completed', 'cancelled'], true)) {
-            $campos['finished_at'] = date('Y-m-d H:i:s');
+        if (in_array($newStatus, ['completed', 'cancelled'], true)) {
+            $fields['finished_at'] = date('Y-m-d H:i:s');
         }
 
         $pdo->beginTransaction();
         try {
-            // Marcadores por stat (reescritura idempotente dentro de la transacción)
+            // Per-stat scores (idempotent rewrite inside the transaction)
             if (!empty($data['scores']) && is_array($data['scores'])) {
                 $pdo->prepare('DELETE FROM match_scores WHERE match_id = ?')->execute([$matchId]);
                 $stmt = $pdo->prepare('INSERT INTO match_scores (match_id, stat_id, score_a, score_b) VALUES (?, ?, ?, ?)');
@@ -109,7 +109,7 @@ class MatchService
                 }
             }
 
-            // Stats por jugador/participante (idem)
+            // Per-player/participant stats (same)
             if (!empty($data['player_stats']) && is_array($data['player_stats'])) {
                 $pdo->prepare('DELETE FROM match_player_stats WHERE match_id = ?')->execute([$matchId]);
                 $stmt = $pdo->prepare('INSERT INTO match_player_stats (match_id, participant_id, player_id, stat_id, value) VALUES (?, ?, ?, ?, ?)');
@@ -118,19 +118,19 @@ class MatchService
                 }
             }
 
-            // Ganador: explícito, inferido del primer marcador desigual, o unico participante (bye)
-            $ganador = $data['winner_participant_id'] ?? null;
-            if ($nuevoEstado === 'completed') {
-                $ganador = $this->resolverGanador($pdo, $match, $ganador);
-                if ($ganador === null) {
+            // Winner: explicit, inferred from the first unequal score, or single participant (bye)
+            $winner = $data['winner_participant_id'] ?? null;
+            if ($newStatus === 'completed') {
+                $winner = $this->resolveWinner($pdo, $match, $winner);
+                if ($winner === null) {
                     throw new \RuntimeException('Registra el ganador o un marcador que lo determine', 409);
                 }
-                $campos['winner_participant_id'] = $ganador;
+                $fields['winner_participant_id'] = $winner;
             }
 
             $set = [];
             $params = [];
-            foreach ($campos as $k => $v) {
+            foreach ($fields as $k => $v) {
                 $set[] = "`{$k}` = ?";
                 $params[] = $v;
             }
@@ -139,9 +139,9 @@ class MatchService
             $params[] = $matchId;
             $pdo->prepare('UPDATE matches SET ' . implode(', ', $set) . ' WHERE id = ?')->execute($params);
 
-            // Propagación al bracket (draw_match) + avance del ganador
-            if (!empty($match['draw_match_id']) && in_array($nuevoEstado, ['completed', 'cancelled'], true)) {
-                $this->propagarAlBracket($pdo, (int) $match['draw_match_id'], $nuevoEstado, $ganador);
+            // Propagation to the bracket (draw_match) + winner advance
+            if (!empty($match['draw_match_id']) && in_array($newStatus, ['completed', 'cancelled'], true)) {
+                $this->propagateToBracket($pdo, (int) $match['draw_match_id'], $newStatus, $winner);
             }
 
             $pdo->commit();
@@ -150,20 +150,20 @@ class MatchService
             throw $e;
         }
 
-        $this->audit->registrar($actorId, 'match', $matchId, "partido:$nuevoEstado", $match, $campos, $request);
+        $this->audit->record($actorId, 'match', $matchId, "partido:$newStatus", $match, $fields, $request);
 
         $stmt = $pdo->prepare('SELECT * FROM matches WHERE id = ?');
         $stmt->execute([$matchId]);
         return $stmt->fetch(PDO::FETCH_ASSOC);
     }
 
-    private function resolverGanador(PDO $pdo, array $match, $ganadorExplicito): ?int
+    private function resolveWinner(PDO $pdo, array $match, $explicitWinner): ?int
     {
-        if ($ganadorExplicito !== null && $ganadorExplicito !== '' && $ganadorExplicito !== 0) {
-            return (int) $ganadorExplicito;
+        if ($explicitWinner !== null && $explicitWinner !== '' && $explicitWinner !== 0) {
+            return (int) $explicitWinner;
         }
 
-        // Bye: un solo participante avanza directo
+        // Bye: a single participant advances directly
         if ($match['participant_a_id'] !== null && $match['participant_b_id'] === null) {
             return (int) $match['participant_a_id'];
         }
@@ -171,8 +171,8 @@ class MatchService
             return (int) $match['participant_b_id'];
         }
 
-        // Inferir del primer score con diferencia
-        $stmt = $pdo->prepare('SELECT score_a, score_b FROM match_scores WHERE match_id = ?'); // TODO: elegir stat principal (id menor)
+        // Infer from the first score with a difference
+        $stmt = $pdo->prepare('SELECT score_a, score_b FROM match_scores WHERE match_id = ?'); // TODO: choose main stat (lowest id)
         $stmt->execute([$match['id']]);
         foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $s) {
             if ((float) $s['score_a'] > (float) $s['score_b']) {
@@ -187,32 +187,32 @@ class MatchService
     }
 
     /**
-     * Actualiza el enfrentamiento del bracket y avanza el ganador al siguiente partido.
+     * Updates the bracket fixture and advances the winner to the next match.
      */
-    private function propagarAlBracket(PDO $pdo, int $drawMatchId, string $estado, ?int $ganador): void
+    private function propagateToBracket(PDO $pdo, int $drawMatchId, string $status, ?int $winner): void
     {
         $pdo->prepare('UPDATE draw_matches SET status = ?, winner_participant_id = ? WHERE id = ?')
-            ->execute([$estado, $ganador, $drawMatchId]);
+            ->execute([$status, $winner, $drawMatchId]);
 
         $stmt = $pdo->prepare('SELECT next_match_id, next_slot FROM draw_matches WHERE id = ?');
         $stmt->execute([$drawMatchId]);
-        $siguiente = $stmt->fetch(PDO::FETCH_ASSOC);
+        $next = $stmt->fetch(PDO::FETCH_ASSOC);
 
-        if (!$siguiente || $siguiente['next_match_id'] === null || $ganador === null) {
+        if (!$next || $next['next_match_id'] === null || $winner === null) {
             return;
         }
 
-        $columna = $siguiente['next_slot'] === 'b' ? 'participant_b_id' : 'participant_a_id';
-        $pdo->prepare("UPDATE draw_matches SET {$columna} = ? WHERE id = ?")
-            ->execute([$ganador, $siguiente['next_match_id']]);
+        $column = $next['next_slot'] === 'b' ? 'participant_b_id' : 'participant_a_id';
+        $pdo->prepare("UPDATE draw_matches SET {$column} = ? WHERE id = ?")
+            ->execute([$winner, $next['next_match_id']]);
 
-        // El partido oficial siguiente también refleja el avance
+        // The next official match also reflects the advance
         $stmt = $pdo->prepare('SELECT id FROM matches WHERE draw_match_id = ?');
-        $stmt->execute([$siguiente['next_match_id']]);
+        $stmt->execute([$next['next_match_id']]);
         $nextOfficialId = $stmt->fetchColumn();
         if ($nextOfficialId) {
-            $pdo->prepare("UPDATE matches SET {$columna} = ? WHERE id = ?")
-                ->execute([$ganador, $nextOfficialId]);
+            $pdo->prepare("UPDATE matches SET {$column} = ? WHERE id = ?")
+                ->execute([$winner, $nextOfficialId]);
         }
     }
 }

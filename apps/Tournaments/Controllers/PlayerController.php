@@ -4,6 +4,7 @@ namespace Apps\Tournaments\Controllers;
 
 use Apollo\Core\Container\Container;
 use Apollo\Core\Http\Controller;
+use Apollo\Core\Validation\ValidationException;
 use Apps\Tournaments\Services\PlayerService;
 
 class PlayerController extends Controller
@@ -18,7 +19,7 @@ class PlayerController extends Controller
         try {
             return $this->json([
                 'success' => true,
-                'data' => $this->players->listar($this->request->query('q')),
+                'data' => $this->players->list($this->request->query('q')),
             ]);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudieron listar los jugadores', 'message' => $e->getMessage()], 500);
@@ -28,11 +29,11 @@ class PlayerController extends Controller
     public function show($id)
     {
         try {
-            $jugador = $this->players->mostrar((int) $id);
-            if (!$jugador) {
+            $player = $this->players->show((int) $id);
+            if (!$player) {
                 return $this->json(['error' => 'Jugador no encontrado'], 404);
             }
-            return $this->json(['success' => true, 'data' => $jugador]);
+            return $this->json(['success' => true, 'data' => $player]);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo obtener el jugador', 'message' => $e->getMessage()], 500);
         }
@@ -41,8 +42,16 @@ class PlayerController extends Controller
     public function store()
     {
         try {
-            $id = $this->players->crear($this->actorId(), $this->body());
+            $data = $this->validate($this->body(), [
+                'name'          => 'required|string|max:100',
+                'user_id'       => 'nullable|integer|min:1',
+                'jersey_number' => 'nullable|integer|min:0',
+                'birth_date'    => 'nullable|date',
+            ]);
+            $id = $this->players->create($this->actorId(), $data);
             return $this->json(['success' => true, 'data' => ['id' => (int) $id], 'message' => 'Jugador creado'], 201);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
@@ -53,11 +62,19 @@ class PlayerController extends Controller
     public function update($id)
     {
         try {
-            $jugador = $this->players->actualizar($this->actorId(), (int) $id, $this->body());
-            if (!$jugador) {
+            $data = $this->validate($this->body(), [
+                'name'          => 'sometimes|string|max:100',
+                'user_id'       => 'sometimes|nullable|integer|min:1',
+                'jersey_number' => 'sometimes|nullable|integer|min:0',
+                'birth_date'    => 'sometimes|nullable|date',
+            ]);
+            $player = $this->players->update($this->actorId(), (int) $id, $data);
+            if (!$player) {
                 return $this->json(['error' => 'Jugador no encontrado'], 404);
             }
-            return $this->json(['success' => true, 'data' => $jugador, 'message' => 'Jugador actualizado']);
+            return $this->json(['success' => true, 'data' => $player, 'message' => 'Jugador actualizado']);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
@@ -68,7 +85,7 @@ class PlayerController extends Controller
     public function destroy($id)
     {
         try {
-            if (!$this->players->eliminar($this->actorId(), (int) $id)) {
+            if (!$this->players->delete($this->actorId(), (int) $id)) {
                 return $this->json(['error' => 'Jugador no encontrado'], 404);
             }
             return $this->json(['success' => true, 'message' => 'Jugador eliminado']);

@@ -103,8 +103,9 @@ class ApiSmokeTest extends TestCase
     {
         [$status, $body] = $this->dispatch('POST', '/api/auth/login');
 
-        $this->assertSame(400, $status);
+        $this->assertSame(422, $status);
         $this->assertSame('Validation Error', $body['error']);
+        $this->assertArrayHasKey('errors', $body);
     }
 
     public function test_admin_route_resolves_role_middleware_without_500(): void

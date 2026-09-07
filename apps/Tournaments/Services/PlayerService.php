@@ -12,7 +12,7 @@ class PlayerService
     ) {
     }
 
-    public function listar(?string $q = null): array
+    public function list(?string $q = null): array
     {
         if (!empty($q)) {
             return $this->players->search($q);
@@ -20,33 +20,33 @@ class PlayerService
         return $this->players->query()->orderBy('name', 'ASC')->get();
     }
 
-    public function mostrar(int $id): ?array
+    public function show(int $id): ?array
     {
         return $this->players->find($id);
     }
 
-    public function crear(int $actorId, array $data): ?string
+    public function create(int $actorId, array $data): ?string
     {
-        $nombre = trim($data['name'] ?? '');
-        if ($nombre === '') {
+        $name = trim($data['name'] ?? '');
+        if ($name === '') {
             throw new \InvalidArgumentException('El nombre del jugador es obligatorio');
         }
 
         $id = $this->players->create([
             'user_id' => !empty($data['user_id']) ? (int) $data['user_id'] : null,
-            'name' => $nombre,
+            'name' => $name,
             'jersey_number' => $data['jersey_number'] ?? null,
             'birth_date' => $data['birth_date'] ?? null,
         ]);
 
-        $this->audit->registrar($actorId, 'player', (int) $id, 'jugador:crear', null, ['name' => $nombre]);
+        $this->audit->record($actorId, 'player', (int) $id, 'jugador:crear', null, ['name' => $name]);
         return $id;
     }
 
-    public function actualizar(int $actorId, int $id, array $data): ?array
+    public function update(int $actorId, int $id, array $data): ?array
     {
-        $jugador = $this->players->find($id);
-        if (!$jugador) {
+        $player = $this->players->find($id);
+        if (!$player) {
             return null;
         }
 
@@ -56,19 +56,19 @@ class PlayerService
             'birth_date' => $data['birth_date'] ?? null,
         ], fn($v) => $v !== null));
 
-        $this->audit->registrar($actorId, 'player', $id, 'jugador:actualizar', $jugador);
+        $this->audit->record($actorId, 'player', $id, 'jugador:actualizar', $player);
         return $this->players->find($id);
     }
 
-    public function eliminar(int $actorId, int $id): bool
+    public function delete(int $actorId, int $id): bool
     {
-        $jugador = $this->players->find($id);
-        if (!$jugador) {
+        $player = $this->players->find($id);
+        if (!$player) {
             return false;
         }
 
         $this->players->delete($id);
-        $this->audit->registrar($actorId, 'player', $id, 'jugador:eliminar', $jugador);
+        $this->audit->record($actorId, 'player', $id, 'jugador:eliminar', $player);
         return true;
     }
 }

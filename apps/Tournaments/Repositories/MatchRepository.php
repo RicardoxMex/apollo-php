@@ -9,7 +9,7 @@ class MatchRepository extends BaseRepository
     protected string $table = 'matches';
 
     /**
-     * Partidos del torneo con marcadores y stats por jugador.
+     * Tournament matches with scores and per-player stats.
      */
     public function listWithDetails(int $tournamentId): array
     {
@@ -24,13 +24,13 @@ class MatchRepository extends BaseRepository
             'match_scores'
         );
         $scores = $builder->whereIn('match_id', array_column($matches, 'id'))->get();
-        $scoresPorMatch = [];
+        $scoresByMatch = [];
         foreach ($scores as $s) {
-            $scoresPorMatch[$s['match_id']][] = $s;
+            $scoresByMatch[$s['match_id']][] = $s;
         }
 
         foreach ($matches as &$m) {
-            $m['scores'] = $scoresPorMatch[$m['id']] ?? [];
+            $m['scores'] = $scoresByMatch[$m['id']] ?? [];
         }
 
         return $matches;

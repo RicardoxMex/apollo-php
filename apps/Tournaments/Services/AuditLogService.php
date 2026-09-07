@@ -12,9 +12,9 @@ class AuditLogService
     }
 
     /**
-     * Registra una acción de auditoría. El Request es opcional (IP/user-agent).
+     * Records an audit action. The Request is optional (IP/user-agent).
      */
-    public function registrar(int|string|null $actorId, string $entidad, int|string $entidadId, string $accion, ?array $antes = null, ?array $despues = null, ?Request $request = null): void
+    public function record(int|string|null $actorId, string $entityType, int|string $entityId, string $action, ?array $before = null, ?array $after = null, ?Request $request = null): void
     {
         $ip = null;
         $userAgent = null;
@@ -23,11 +23,11 @@ class AuditLogService
             $userAgent = $request->userAgent();
         }
 
-        $this->logs->registrar($actorId, $entidad, $entidadId, $accion, $antes, $despues, $ip, $userAgent);
+        $this->logs->record($actorId, $entityType, $entityId, $action, $before, $after, $ip, $userAgent);
     }
 
-    public function listar(?string $entidad = null, ?int $entidadId = null, int $perPage = 25, int $page = 1): array
+    public function list(?string $entityType = null, ?int $entityId = null, int $perPage = 25, int $page = 1): array
     {
-        return $this->logs->filtrar($entidad, $entidadId, $perPage, $page);
+        return $this->logs->filter($entityType, $entityId, $perPage, $page);
     }
 }

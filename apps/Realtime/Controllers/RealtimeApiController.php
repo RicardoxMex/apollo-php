@@ -9,6 +9,8 @@ use Apollo\Core\Realtime\Auth\ChannelAuthenticator;
 use Apollo\Core\Realtime\Notifications\NotificationManager;
 use Apollo\Core\Realtime\Notifications\MySqlNotificationRepository;
 use Apollo\Core\Realtime\Support\RealtimeManager;
+use Apollo\Core\Validation\ValidationException;
+use Apollo\Core\Validation\Validator;
 
 class RealtimeApiController
 {
@@ -30,13 +32,19 @@ class RealtimeApiController
 
         $body = $request->json() ?? [];
 
+        try {
+            Validator::make($body, [
+                'channel' => 'required|string|max:255',
+                'event'   => 'required|string|max:120',
+                'data'    => 'nullable|array',
+            ])->validateOrFail();
+        } catch (ValidationException $e) {
+            return $this->error('VALIDATION_ERROR', 'channel y event son requeridos', 400);
+        }
+
         $channel = $body['channel'] ?? null;
         $event = $body['event'] ?? null;
         $data = is_array($body['data'] ?? null) ? $body['data'] : [];
-
-        if (!$channel || !$event) {
-            return $this->error('VALIDATION_ERROR', 'channel y event son requeridos', 400);
-        }
 
         $this->realtime->broadcast((string) $channel, (string) $event, $data);
 
@@ -58,11 +66,17 @@ class RealtimeApiController
         }
 
         $body = $request->json() ?? [];
-        $channel = $body['channel'] ?? null;
 
-        if (!$channel) {
+        try {
+            Validator::make($body, [
+                'channel' => 'required|string|max:255',
+                'user_id' => 'sometimes|integer|min:1',
+            ])->validateOrFail();
+        } catch (ValidationException $e) {
             return $this->error('VALIDATION_ERROR', 'channel requerido', 400);
         }
+
+        $channel = $body['channel'] ?? null;
 
         $userId = $body['user_id'] ?? ($request->user()->id ?? null);
 

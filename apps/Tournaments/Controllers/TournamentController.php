@@ -4,17 +4,52 @@ namespace Apps\Tournaments\Controllers;
 
 use Apollo\Core\Container\Container;
 use Apollo\Core\Http\Controller;
+use Apollo\Core\Validation\ValidationException;
 use Apps\Tournaments\Services\DrawService;
 use Apps\Tournaments\Services\RegistrationService;
 use Apps\Tournaments\Services\TournamentService;
 
 class TournamentController extends Controller
 {
+    private const RULES = [
+        'title'                 => 'required|string|min:3|max:120',
+        'format'                => 'required|in:eliminacion-directa,doble-eliminacion,round-robin,grupos,liga',
+        'max_participants'      => 'required|integer|min:2',
+        'sport'                 => 'nullable|string|max:60',
+        'description'           => 'nullable|string|max:2000',
+        'location'              => 'nullable|string|max:255',
+        'image'                 => 'nullable|string|max:500',
+        'is_online'             => 'nullable|boolean',
+        'is_individual'         => 'nullable|boolean',
+        'start_date'            => 'nullable|date',
+        'end_date'              => 'nullable|date',
+        'registration_deadline' => 'nullable|date',
+        'registration_fee'      => 'nullable|numeric|min:0',
+        'currency'              => 'nullable|string|size:3',
+        'visibility'            => 'nullable|in:publico,privado',
+        'minimum_age'           => 'nullable|integer|min:0',
+        'rules'                 => 'nullable|string',
+        'max_substitutes'       => 'nullable|integer|min:0',
+        'season_id'             => 'nullable|integer',
+        'prizes'                => 'nullable|array',
+        'stats'                 => 'nullable|array',
+    ];
+
+    private function reglasActualizar(): array
+    {
+        $rules = [];
+
+        foreach (self::RULES as $campo => $regla) {
+            $rules[$campo] = 'sometimes|' . $regla;
+        }
+
+        return $rules;
+    }
     public function __construct(
         Container $container,
-        private TournamentService $torneos,
-        private RegistrationService $inscripciones,
-        private DrawService $sorteos,
+        private TournamentService $tournaments,
+        private RegistrationService $registrations,
+        private DrawService $draws,
     ) {
         parent::__construct($container);
     }
@@ -22,15 +57,15 @@ class TournamentController extends Controller
     public function index()
     {
         try {
-            $filtros = [
+            $filters = [
                 'q' => $this->request->query('q'),
                 'sport' => $this->request->query('sport'),
                 'status' => $this->request->query('status'),
                 'visibility' => $this->request->query('visibility'),
                 'organizer_id' => $this->request->query('organizer_id'),
             ];
-            $result = $this->torneos->index(
-                array_filter($filtros, fn($v) => $v !== null && $v !== ''),
+            $result = $this->tournaments->index(
+                array_filter($filters, fn($v) => $v !== null && $v !== ''),
                 (int) $this->request->query('perPage', 20),
                 (int) $this->request->query('page', 1),
             );
@@ -43,11 +78,11 @@ class TournamentController extends Controller
     public function show($id)
     {
         try {
-            $torneo = $this->torneos->mostrar((int) $id);
-            if (!$torneo) {
+            $tournament = $this->tournaments->show((int) $id);
+            if (!$tournament) {
                 return $this->json(['error' => 'Torneo no encontrado'], 404);
             }
-            return $this->json(['success' => true, 'data' => $torneo]);
+            return $this->json(['success' => true, 'data' => $tournament]);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo obtener el torneo', 'message' => $e->getMessage()], 500);
         }
@@ -56,8 +91,11 @@ class TournamentController extends Controller
     public function store()
     {
         try {
-            $torneo = $this->torneos->crear($this->actorId(), $this->body(), $this->request);
-            return $this->json(['success' => true, 'data' => $torneo, 'message' => 'Torneo creado'], 201);
+            $data = $this->validate($this->body(), self::RULES);
+            $tournament = $this->tournaments->create($this->actorId(), $data, $this->request);
+            return $this->json(['success' => true, 'data' => $tournament, 'message' => 'Torneo creado'], 201);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\Throwable $e) {
@@ -68,11 +106,14 @@ class TournamentController extends Controller
     public function update($id)
     {
         try {
-            $torneo = $this->torneos->actualizar($this->actorId(), (int) $id, $this->body(), $this->request);
-            if (!$torneo) {
+            $data = $this->validate($this->body(), $this->reglasActualizar());
+            $tournament = $this->tournaments->update($this->actorId(), (int) $id, $data, $this->request);
+            if (!$tournament) {
                 return $this->json(['error' => 'Torneo no encontrado'], 404);
             }
-            return $this->json(['success' => true, 'data' => $torneo, 'message' => 'Torneo actualizado']);
+            return $this->json(['success' => true, 'data' => $tournament, 'message' => 'Torneo actualizado']);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\RuntimeException $e) {
@@ -85,7 +126,7 @@ class TournamentController extends Controller
     public function destroy($id)
     {
         try {
-            if (!$this->torneos->eliminar($this->actorId(), (int) $id, $this->request)) {
+            if (!$this->tournaments->delete($this->actorId(), (int) $id, $this->request)) {
                 return $this->json(['error' => 'Torneo no encontrado'], 404);
             }
             return $this->json(['success' => true, 'message' => 'Torneo eliminado']);
@@ -98,27 +139,27 @@ class TournamentController extends Controller
 
     public function publish($id)
     {
-        return $this->transicion((int) $id, 'publish');
+        return $this->transition((int) $id, 'publish');
     }
 
     public function start($id)
     {
-        return $this->transicion((int) $id, 'start');
+        return $this->transition((int) $id, 'start');
     }
 
     public function finish($id)
     {
-        return $this->transicion((int) $id, 'finish');
+        return $this->transition((int) $id, 'finish');
     }
 
-    private function transicion(int $id, string $accion)
+    private function transition(int $id, string $action)
     {
         try {
-            $torneo = $this->torneos->transicion($this->actorId(), $id, $accion, $this->request);
-            if (!$torneo) {
+            $tournament = $this->tournaments->transition($this->actorId(), $id, $action, $this->request);
+            if (!$tournament) {
                 return $this->json(['error' => 'Torneo no encontrado'], 404);
             }
-            return $this->json(['success' => true, 'data' => $torneo, 'message' => "Torneo {$accion}ado"]);
+            return $this->json(['success' => true, 'data' => $tournament, 'message' => "Torneo {$action}ado"]);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\RuntimeException $e) {
@@ -131,7 +172,7 @@ class TournamentController extends Controller
     public function participants($id)
     {
         try {
-            return $this->json(['success' => true, 'data' => $this->torneos->participantes((int) $id)]);
+            return $this->json(['success' => true, 'data' => $this->tournaments->participants((int) $id)]);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudieron listar los participantes', 'message' => $e->getMessage()], 500);
         }
@@ -142,7 +183,7 @@ class TournamentController extends Controller
         try {
             return $this->json([
                 'success' => true,
-                'data' => $this->inscripciones->listar((int) $id, $this->actorId(), $this->request->query('status')),
+                'data' => $this->registrations->list((int) $id, $this->actorId(), $this->request->query('status')),
             ]);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
@@ -154,7 +195,7 @@ class TournamentController extends Controller
     public function draws($id)
     {
         try {
-            return $this->json(['success' => true, 'data' => $this->sorteos->mostrar((int) $id)]);
+            return $this->json(['success' => true, 'data' => $this->draws->show((int) $id)]);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo obtener el sorteo', 'message' => $e->getMessage()], 500);
         }
@@ -163,8 +204,14 @@ class TournamentController extends Controller
     public function generateDraw($id)
     {
         try {
-            $sorteo = $this->sorteos->generar($this->actorId(), (int) $id, $this->body(), $this->request);
-            return $this->json(['success' => true, 'data' => $sorteo, 'message' => 'Sorteo generado']);
+            $data = $this->validate($this->body(), [
+                'type'       => 'required|in:groups,bracket,manual',
+                'num_groups' => 'nullable|integer|min:2',
+            ]);
+            $draw = $this->draws->generate($this->actorId(), (int) $id, $data, $this->request);
+            return $this->json(['success' => true, 'data' => $draw, 'message' => 'Sorteo generado']);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\RuntimeException $e) {

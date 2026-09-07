@@ -4,20 +4,28 @@ namespace Apps\Tournaments\Controllers;
 
 use Apollo\Core\Container\Container;
 use Apollo\Core\Http\Controller;
+use Apollo\Core\Validation\ValidationException;
 use Apps\Tournaments\Services\RegistrationService;
 
 class RegistrationController extends Controller
 {
-    public function __construct(Container $container, private RegistrationService $inscripciones)
+    public function __construct(Container $container, private RegistrationService $registrations)
     {
         parent::__construct($container);
     }
 
-    public function apply($torneoId)
+    public function apply($tournamentId)
     {
         try {
-            $registro = $this->inscripciones->aplicar($this->actorId(), (int) $torneoId, $this->body(), $this->request);
-            return $this->json(['success' => true, 'data' => $registro, 'message' => 'Solicitud enviada'], 201);
+            $data = $this->validate($this->body(), [
+                'team_id'  => 'nullable|integer|min:1',
+                'player_id'=> 'nullable|integer|min:1',
+                'message'  => 'nullable|string|max:500',
+            ]);
+            $registration = $this->registrations->apply($this->actorId(), (int) $tournamentId, $data, $this->request);
+            return $this->json(['success' => true, 'data' => $registration, 'message' => 'Solicitud enviada'], 201);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 409);
         } catch (\Throwable $e) {
@@ -25,11 +33,16 @@ class RegistrationController extends Controller
         }
     }
 
-    public function decide($torneoId, $registroId)
+    public function decide($tournamentId, $registrationId)
     {
         try {
-            $registro = $this->inscripciones->decidir($this->actorId(), (int) $torneoId, (int) $registroId, $this->body(), $this->request);
-            return $this->json(['success' => true, 'data' => $registro, 'message' => 'Solicitud decidida']);
+            $data = $this->validate($this->body(), [
+                'action' => 'required|in:accepted,rejected',
+            ]);
+            $registration = $this->registrations->decide($this->actorId(), (int) $tournamentId, (int) $registrationId, $data, $this->request);
+            return $this->json(['success' => true, 'data' => $registration, 'message' => 'Solicitud decidida']);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
         } catch (\Throwable $e) {
@@ -37,11 +50,11 @@ class RegistrationController extends Controller
         }
     }
 
-    public function cancel($torneoId, $registroId)
+    public function cancel($tournamentId, $registrationId)
     {
         try {
-            $registro = $this->inscripciones->cancelar($this->actorId(), (int) $torneoId, (int) $registroId, $this->request);
-            return $this->json(['success' => true, 'data' => $registro, 'message' => 'Solicitud cancelada']);
+            $registration = $this->registrations->cancel($this->actorId(), (int) $tournamentId, (int) $registrationId, $this->request);
+            return $this->json(['success' => true, 'data' => $registration, 'message' => 'Solicitud cancelada']);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
         } catch (\Throwable $e) {

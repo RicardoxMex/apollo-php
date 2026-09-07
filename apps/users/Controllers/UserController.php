@@ -3,6 +3,7 @@ namespace Apps\Users\Controllers;
 
 use Apollo\Core\Http\Controller;
 use Apollo\Core\Container\Container;
+use Apollo\Core\Validation\ValidationException;
 use Apps\Users\Services\UserService;
 
 class UserController extends Controller
@@ -74,13 +75,13 @@ class UserController extends Controller
     public function store()
     {
         try {
-            $data = $this->request ? json_decode($this->request->getContent(), true) : [];
-
-            if (empty($data)) {
-                return $this->json([
-                    'error' => 'No data provided'
-                ], 400);
-            }
+            $data = $this->validate($this->request->json() ?? [], [
+                'name'     => 'required|string|max:100',
+                'email'    => 'required|email|max:120',
+                'password' => 'nullable|string|min:6',
+                'role'     => 'nullable|string|max:50',
+                'status'   => 'nullable|in:active,inactive,suspended',
+            ]);
 
             $user = $this->userService->createUser($data);
 
@@ -89,6 +90,11 @@ class UserController extends Controller
                 'data' => $user,
                 'message' => 'User created successfully'
             ], 201);
+        } catch (ValidationException $e) {
+            return $this->json([
+                'error' => 'Validation error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json([
                 'error' => 'Validation error',
@@ -105,13 +111,13 @@ class UserController extends Controller
     public function update($id)
     {
         try {
-            $data = $this->request ? json_decode($this->request->getContent(), true) : [];
-
-            if (empty($data)) {
-                return $this->json([
-                    'error' => 'No data provided'
-                ], 400);
-            }
+            $data = $this->validate($this->request->json() ?? [], [
+                'name'     => 'sometimes|string|max:100',
+                'email'    => 'sometimes|email|max:120',
+                'password' => 'sometimes|nullable|string|min:6',
+                'role'     => 'sometimes|string|max:50',
+                'status'   => 'sometimes|in:active,inactive,suspended',
+            ]);
 
             $user = $this->userService->updateUser((int) $id, $data);
 
@@ -126,6 +132,11 @@ class UserController extends Controller
                 'data' => $user,
                 'message' => 'User updated successfully'
             ]);
+        } catch (ValidationException $e) {
+            return $this->json([
+                'error' => 'Validation error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (\InvalidArgumentException $e) {
             return $this->json([
                 'error' => 'Validation error',

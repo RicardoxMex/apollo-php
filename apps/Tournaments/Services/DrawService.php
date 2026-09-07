@@ -18,26 +18,26 @@ class DrawService
     }
 
     /**
-     * Genera (o re-genera) el sorteo del torneo. Cada generación crea una versión nueva.
-     * - type=bracket: rondas + enfrentamientos + partidos oficiales (1:1), con byes y
-     *   avance automático al completar.
-     * - type=groups: distribución en grupos (sin fixtures todavía).
-     * - type=manual: solo registra el sorteo.
+     * Generates (or re-generates) the tournament draw. Each generation creates a new version.
+     * - type=bracket: rounds + fixtures + official matches (1:1), with byes and
+     *   automatic advancement on completion.
+     * - type=groups: distribution in groups (no fixtures yet).
+     * - type=manual: only records the draw.
      */
-    public function generar(int $actorId, int $torneoId, array $data, ?Request $request = null): array
+    public function generate(int $actorId, int $tournamentId, array $data, ?Request $request = null): array
     {
         $pdo = $this->pdo();
 
         $stmt = $pdo->prepare('SELECT * FROM tournaments WHERE id = ? AND deleted_at IS NULL');
-        $stmt->execute([$torneoId]);
-        $torneo = $stmt->fetch(PDO::FETCH_ASSOC);
-        if (!$torneo) {
+        $stmt->execute([$tournamentId]);
+        $tournament = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$tournament) {
             throw new \RuntimeException('Torneo no encontrado', 404);
         }
-        if ((int) $torneo['organizer_id'] !== $actorId) {
+        if ((int) $tournament['organizer_id'] !== $actorId) {
             throw new \RuntimeException('No eres el organizador de este torneo', 403);
         }
-        if (!in_array($torneo['status'], ['draft', 'open'], true)) {
+        if (!in_array($tournament['status'], ['draft', 'open'], true)) {
             throw new \RuntimeException('El sorteo solo se genera en borrador o abierto a inscripciones', 409);
         }
 
@@ -46,9 +46,9 @@ class DrawService
             throw new \InvalidArgumentException('Tipo de sorteo inválido: groups, bracket o manual');
         }
 
-        // Participantes aceptados (el orden de seed define el bracket)
+        // Accepted participants (the seed order defines the bracket)
         $stmt = $pdo->prepare('SELECT id FROM tournament_participants WHERE tournament_id = ? ORDER BY seed ASC, id ASC');
-        $stmt->execute([$torneoId]);
+        $stmt->execute([$tournamentId]);
         $participantIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
 
         if ($type === 'bracket' && count($participantIds) < 2) {
@@ -56,20 +56,20 @@ class DrawService
         }
 
         $stmt = $pdo->prepare('SELECT COALESCE(MAX(version), 0) AS v FROM draws WHERE tournament_id = ?');
-        $stmt->execute([$torneoId]);
+        $stmt->execute([$tournamentId]);
         $version = ((int) $stmt->fetchColumn()) + 1;
 
         $pdo->beginTransaction();
         try {
             $pdo->prepare('INSERT INTO draws (tournament_id, type, version, generated_at, created_at) VALUES (?, ?, ?, ?, ?)')
-                ->execute([$torneoId, $type, $version, date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
+                ->execute([$tournamentId, $type, $version, date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
             $drawId = (int) $pdo->lastInsertId();
 
             if ($type === 'bracket') {
-                $this->crearBracket($pdo, $drawId, $participantIds);
+                $this->createBracket($pdo, $drawId, $participantIds);
             } elseif ($type === 'groups') {
-                $numGrupos = max(2, (int) ($data['num_groups'] ?? 2));
-                $this->crearGrupos($pdo, $drawId, BracketGenerator::asignarGrupos($participantIds, $numGrupos));
+                $numGroups = max(2, (int) ($data['num_groups'] ?? 2));
+                $this->createGroups($pdo, $drawId, BracketGenerator::assignGroups($participantIds, $numGroups));
             }
 
             $pdo->commit();
@@ -78,20 +78,20 @@ class DrawService
             throw $e;
         }
 
-        $this->audit->registrar($actorId, 'draw', $drawId, 'draw:generar', null, ['type' => $type, 'version' => $version, 'participants' => count($participantIds)], $request);
-        return $this->mostrar($torneoId);
+        $this->audit->record($actorId, 'draw', $drawId, 'draw:generar', null, ['type' => $type, 'version' => $version, 'participants' => count($participantIds)], $request);
+        return $this->show($tournamentId);
     }
 
     /**
-     * Bracket activo (última versión) listo para el frontend: rondas con enfrentamientos
-     * (a/b, status, scores, ganador) y avances.
+     * Active draw (latest version) ready for the frontend: rounds with fixtures
+     * (a/b, status, scores, winner) and advances.
      */
-    public function mostrar(int $torneoId): array
+    public function show(int $tournamentId): array
     {
         $pdo = $this->pdo();
 
         $stmt = $pdo->prepare('SELECT * FROM draws WHERE tournament_id = ? ORDER BY version DESC LIMIT 1');
-        $stmt->execute([$torneoId]);
+        $stmt->execute([$tournamentId]);
         $draw = $stmt->fetch(PDO::FETCH_ASSOC);
         if (!$draw) {
             return ['draw' => null, 'groups' => [], 'rounds' => []];
@@ -111,9 +111,9 @@ class DrawService
         if ($draw['type'] === 'groups') {
             $stmt = $pdo->prepare('SELECT g.* FROM draw_groups g WHERE g.draw_id = ? ORDER BY g.position ASC');
             $stmt->execute([$draw['id']]);
-            $grupos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            foreach ($grupos as &$g) {
+            foreach ($groups as &$g) {
                 $stmt = $pdo->prepare(
                     'SELECT dgp.tournament_participant_id, dgp.position, COALESCE(t.name, p.name) AS display_name
                      FROM draw_group_participants dgp
@@ -126,15 +126,15 @@ class DrawService
                 $stmt->execute([$g['id']]);
                 $g['participants'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
             }
-            $result['groups'] = $grupos;
+            $result['groups'] = $groups;
         }
 
         if ($draw['type'] === 'bracket') {
             $stmt = $pdo->prepare('SELECT * FROM draw_rounds WHERE draw_id = ? ORDER BY round_number ASC');
             $stmt->execute([$draw['id']]);
-            $rondas = $stmt->fetchAll(PDO::FETCH_ASSOC);
+            $rounds = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-            foreach ($rondas as $ronda) {
+            foreach ($rounds as $round) {
                 $stmt = $pdo->prepare(
                     'SELECT dm.id, dm.match_number, dm.participant_a_id, dm.participant_b_id,
                             dm.winner_participant_id, dm.status, dm.scheduled_at,
@@ -145,35 +145,35 @@ class DrawService
                      WHERE dm.round_id = ?
                      ORDER BY dm.match_number ASC'
                 );
-                $stmt->execute([$ronda['id']]);
-                $enfrentamientos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+                $stmt->execute([$round['id']]);
+                $fixtures = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-                // Scores oficiales por enfrentamiento
-                $matchIds = array_values(array_filter(array_column($enfrentamientos, 'match_id')));
-                $scoresPorMatch = [];
+                // Official scores per fixture
+                $matchIds = array_values(array_filter(array_column($fixtures, 'match_id')));
+                $scoresByMatch = [];
                 if ($matchIds) {
                     $in = implode(',', array_fill(0, count($matchIds), '?'));
                     $stmt = $pdo->prepare("SELECT * FROM match_scores WHERE match_id IN ({$in})");
                     $stmt->execute($matchIds);
                     foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $s) {
-                        $scoresPorMatch[$s['match_id']][] = $s;
+                        $scoresByMatch[$s['match_id']][] = $s;
                     }
                 }
 
-                foreach ($enfrentamientos as &$e) {
+                foreach ($fixtures as &$e) {
                     $e['id'] = (int) $e['id'];
                     $e['participant_a_id'] = $e['participant_a_id'] !== null ? (int) $e['participant_a_id'] : null;
                     $e['participant_b_id'] = $e['participant_b_id'] !== null ? (int) $e['participant_b_id'] : null;
                     $e['winner_participant_id'] = $e['winner_participant_id'] !== null ? (int) $e['winner_participant_id'] : null;
                     $e['next_match_id'] = $e['next_match_id'] !== null ? (int) $e['next_match_id'] : null;
-                    $e['scores'] = $e['match_id'] !== null ? ($scoresPorMatch[$e['match_id']] ?? []) : [];
+                    $e['scores'] = $e['match_id'] !== null ? ($scoresByMatch[$e['match_id']] ?? []) : [];
                     $e['match_id'] = $e['match_id'] !== null ? (int) $e['match_id'] : null;
                 }
 
                 $result['rounds'][] = [
-                    'round_number' => (int) $ronda['round_number'],
-                    'name' => $ronda['name'],
-                    'matches' => $enfrentamientos,
+                    'round_number' => (int) $round['round_number'],
+                    'name' => $round['name'],
+                    'matches' => $fixtures,
                 ];
             }
         }
@@ -181,20 +181,20 @@ class DrawService
         return $result;
     }
 
-    private function crearBracket(PDO $pdo, int $drawId, array $participantIds): void
+    private function createBracket(PDO $pdo, int $drawId, array $participantIds): void
     {
-        $estructura = BracketGenerator::generarBracket($participantIds);
+        $structure = BracketGenerator::generateBracket($participantIds);
 
-        // Rondas
+        // Rounds
         $roundIds = [];
-        $maxRonda = max(array_column($estructura, 'round_number'));
+        $maxRound = max(array_column($structure, 'round_number'));
         $roundStmt = $pdo->prepare('INSERT INTO draw_rounds (draw_id, round_number, name) VALUES (?, ?, ?)');
-        for ($r = 1; $r <= $maxRonda; $r++) {
+        for ($r = 1; $r <= $maxRound; $r++) {
             $roundStmt->execute([$drawId, $r, "Ronda {$r}"]);
             $roundIds[$r] = (int) $pdo->lastInsertId();
         }
 
-        // Enfrentamientos (2 pasadas: insertar todos y luego encadenar next_match)
+        // Fixtures (2 passes: insert all and then chain next_match)
         $matchStmt = $pdo->prepare(
             "INSERT INTO draw_matches (round_id, match_number, participant_a_id, participant_b_id, status, scheduled_at, next_match_id, next_slot)
              VALUES (?, ?, ?, ?, 'pending', ?, NULL, NULL)"
@@ -205,15 +205,15 @@ class DrawService
         );
 
         $byId = [];
-        foreach ($estructura as $i => $m) {
+        foreach ($structure as $i => $m) {
             $matchStmt->execute([$roundIds[$m['round_number']], $m['match_number'], $m['participant_a_id'], $m['participant_b_id'], null]);
             $drawMatchId = (int) $pdo->lastInsertId();
             $byId[$i] = $drawMatchId;
 
-            $officialStmt->execute([$this->torneoDeDraw($pdo, $drawId), $drawMatchId, $m['round_number'], $m['match_number'], $m['participant_a_id'], $m['participant_b_id'], date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
+            $officialStmt->execute([$this->tournamentOfDraw($pdo, $drawId), $drawMatchId, $m['round_number'], $m['match_number'], $m['participant_a_id'], $m['participant_b_id'], date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
         }
 
-        foreach ($estructura as $i => $m) {
+        foreach ($structure as $i => $m) {
             if ($m['next_match_index'] !== null && isset($byId[$m['next_match_index']])) {
                 $pdo->prepare('UPDATE draw_matches SET next_match_id = ?, next_slot = ? WHERE id = ?')
                     ->execute([$byId[$m['next_match_index']], $m['next_slot'], $byId[$i]]);
@@ -221,20 +221,20 @@ class DrawService
         }
     }
 
-    private function torneoDeDraw(PDO $pdo, int $drawId): int
+    private function tournamentOfDraw(PDO $pdo, int $drawId): int
     {
         $stmt = $pdo->prepare('SELECT tournament_id FROM draws WHERE id = ?');
         $stmt->execute([$drawId]);
         return (int) $stmt->fetchColumn();
     }
 
-    private function crearGrupos(PDO $pdo, int $drawId, array $grupos): void
+    private function createGroups(PDO $pdo, int $drawId, array $groups): void
     {
         $groupStmt = $pdo->prepare('INSERT INTO draw_groups (draw_id, name, position) VALUES (?, ?, ?)');
         $pivotStmt = $pdo->prepare('INSERT INTO draw_group_participants (group_id, tournament_participant_id, position) VALUES (?, ?, ?)');
 
-        foreach ($grupos as $i => $g) {
-            $groupStmt->execute([$drawId, $g['nombre'], $g['position']]);
+        foreach ($groups as $i => $g) {
+            $groupStmt->execute([$drawId, $g['name'], $g['position']]);
             $groupId = (int) $pdo->lastInsertId();
             foreach (array_values($g['participant_ids']) as $pos => $pid) {
                 $pivotStmt->execute([$groupId, $pid, $pos + 1]);

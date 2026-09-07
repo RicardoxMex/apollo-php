@@ -15,9 +15,9 @@ class TeamService
     }
 
     /**
-     * Equipos activos (sin soft-delete), con búsqueda opcional.
+     * Active teams (no soft-delete), with optional search.
      */
-    public function listar(?string $q = null): array
+    public function list(?string $q = null): array
     {
         $sql = 'SELECT t.*, COUNT(tp.player_id) AS players_count
                 FROM teams t
@@ -35,10 +35,10 @@ class TeamService
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function mostrar(int $id): ?array
+    public function show(int $id): ?array
     {
-        $equipo = $this->teams->find($id);
-        if (!$equipo || $equipo['deleted_at'] !== null) {
+        $team = $this->teams->find($id);
+        if (!$team || $team['deleted_at'] !== null) {
             return null;
         }
 
@@ -46,29 +46,29 @@ class TeamService
 
         $stmt = $pdo->prepare('SELECT u.id, u.email, u.first_name, u.last_name, u.username FROM team_captains tc JOIN users u ON u.id = tc.user_id WHERE tc.team_id = ?');
         $stmt->execute([$id]);
-        $capitanes = $stmt->fetchAll(PDO::FETCH_ASSOC);
-        foreach ($capitanes as &$c) {
+        $captains = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        foreach ($captains as &$c) {
             $c['name'] = trim(($c['first_name'] ?? '') . ' ' . ($c['last_name'] ?? '')) ?: ($c['username'] ?? '');
             unset($c['first_name'], $c['last_name'], $c['username']);
         }
-        $equipo['captains'] = $capitanes;
+        $team['captains'] = $captains;
 
         $stmt = $pdo->prepare('SELECT p.id, p.name, p.jersey_number AS player_jersey_number, tp.jersey_number AS team_jersey_number, tp.joined_at, tp.left_at
                                FROM team_players tp JOIN players p ON p.id = tp.player_id WHERE tp.team_id = ?');
         $stmt->execute([$id]);
-        $equipo['players'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $team['players'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-        return $equipo;
+        return $team;
     }
 
     /**
-     * Crea un equipo. El actor queda como capitán por defecto; admite players[]
-     * con {name?, player_id?, jersey_number} (crea jugadores si no existen).
+     * Creates a team. The actor becomes captain by default; it accepts players[]
+     * with {name?, player_id?, jersey_number} (creates players if they do not exist).
      */
-    public function crear(int $actorId, array $data): ?array
+    public function create(int $actorId, array $data): ?array
     {
-        $nombre = trim($data['name'] ?? '');
-        if ($nombre === '') {
+        $name = trim($data['name'] ?? '');
+        if ($name === '') {
             throw new \InvalidArgumentException('El nombre del equipo es obligatorio');
         }
 
@@ -77,28 +77,28 @@ class TeamService
         $pdo->beginTransaction();
         try {
             $id = $this->teams->create([
-                'name' => $nombre,
+                'name' => $name,
                 'contact' => $data['contact'] ?? null,
                 'image' => $data['image'] ?? null,
             ]);
 
-            // Capitanes: si no se especifican, el creador capitanea el equipo
-            $capitanes = !empty($data['captains']) && is_array($data['captains'])
+            // Captains: if none specified, the creator captains the team
+            $captains = !empty($data['captains']) && is_array($data['captains'])
                 ? array_map('intval', $data['captains'])
                 : [$actorId];
-            foreach (array_unique($capitanes) as $userId) {
+            foreach (array_unique($captains) as $userId) {
                 if ($userId > 0) {
-                    // En MySQL: INSERT IGNORE; aquí try/catch para portabilidad (PK compuesta protege)
+                    // In MySQL: INSERT IGNORE; here try/catch for portability (composite PK protects)
                     try {
                         $pdo->prepare('INSERT INTO team_captains (team_id, user_id) VALUES (?, ?)')->execute([$id, $userId]);
                     } catch (\Throwable $ignored) {
-                        // Capitán ya registrado: sin efecto
+                        // Captain already registered: no effect
                     }
                 }
             }
 
             if (!empty($data['players']) && is_array($data['players'])) {
-                $this->sincronizarJugadores($pdo, (int) $id, $data['players']);
+                $this->syncPlayers($pdo, (int) $id, $data['players']);
             }
 
             $pdo->commit();
@@ -107,14 +107,14 @@ class TeamService
             throw $e;
         }
 
-        $this->audit->registrar($actorId, 'team', (int) $id, 'equipo:crear', null, ['name' => $nombre]);
-        return $this->mostrar((int) $id);
+        $this->audit->record($actorId, 'team', (int) $id, 'equipo:crear', null, ['name' => $name]);
+        return $this->show((int) $id);
     }
 
-    public function actualizar(int $actorId, int $id, array $data): ?array
+    public function update(int $actorId, int $id, array $data): ?array
     {
-        $equipo = $this->teams->find($id);
-        if (!$equipo || $equipo['deleted_at'] !== null) {
+        $team = $this->teams->find($id);
+        if (!$team || $team['deleted_at'] !== null) {
             return null;
         }
 
@@ -128,7 +128,7 @@ class TeamService
             ], fn($v) => $v !== null));
 
             if (isset($data['players']) && is_array($data['players'])) {
-                $this->sincronizarJugadores($pdo, $id, $data['players']);
+                $this->syncPlayers($pdo, $id, $data['players']);
             }
 
             $pdo->commit();
@@ -137,37 +137,37 @@ class TeamService
             throw $e;
         }
 
-        $this->audit->registrar($actorId, 'team', $id, 'equipo:actualizar', $equipo);
-        return $this->mostrar($id);
+        $this->audit->record($actorId, 'team', $id, 'equipo:actualizar', $team);
+        return $this->show($id);
     }
 
-    public function eliminar(int $actorId, int $id): bool
+    public function delete(int $actorId, int $id): bool
     {
-        $equipo = $this->teams->find($id);
-        if (!$equipo || $equipo['deleted_at'] !== null) {
+        $team = $this->teams->find($id);
+        if (!$team || $team['deleted_at'] !== null) {
             return false;
         }
 
         $this->teams->update($id, ['deleted_at' => date('Y-m-d H:i:s')]);
-        $this->audit->registrar($actorId, 'team', $id, 'equipo:eliminar', $equipo);
+        $this->audit->record($actorId, 'team', $id, 'equipo:eliminar', $team);
         return true;
     }
 
     /**
-     * Inserta jugadores (creándolos si hace falta) y sincroniza team_players.
-     * Los jugadores existentes en la lista que no vienen en la edición se retiran (left_at).
+     * Inserts players (creating them if needed) and syncs team_players.
+     * Existing players in the team that are not in the list are retired (left_at).
      */
-    private function sincronizarJugadores(PDO $pdo, int $teamId, array $jugadores): void
+    private function syncPlayers(PDO $pdo, int $teamId, array $players): void
     {
-        $nuevosInscritos = [];
-        foreach ($jugadores as $j) {
-            $playerId = (int) ($j['player_id'] ?? 0);
-            $nombre = trim($j['name'] ?? '');
-            $dorsal = $j['jersey_number'] ?? null;
+        $inscribedIds = [];
+        foreach ($players as $p) {
+            $playerId = (int) ($p['player_id'] ?? 0);
+            $name = trim($p['name'] ?? '');
+            $jerseyNumber = $p['jersey_number'] ?? null;
 
-            if ($playerId === 0 && $nombre !== '') {
+            if ($playerId === 0 && $name !== '') {
                 $pdo->prepare('INSERT INTO players (name, jersey_number, created_at, updated_at) VALUES (?, ?, ?, ?)')
-                    ->execute([$nombre, $dorsal, date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
+                    ->execute([$name, $jerseyNumber, date('Y-m-d H:i:s'), date('Y-m-d H:i:s')]);
                 $playerId = (int) $pdo->lastInsertId();
             }
             if ($playerId === 0) {
@@ -177,15 +177,15 @@ class TeamService
             $pdo->prepare('INSERT INTO team_players (team_id, player_id, jersey_number, joined_at)
                            VALUES (?, ?, ?, ?)
                            ON DUPLICATE KEY UPDATE jersey_number = VALUES(jersey_number), left_at = NULL')
-                ->execute([$teamId, $playerId, $dorsal, date('Y-m-d H:i:s')]);
-            $nuevosInscritos[] = $playerId;
+                ->execute([$teamId, $playerId, $jerseyNumber, date('Y-m-d H:i:s')]);
+            $inscribedIds[] = $playerId;
         }
 
-        // Retirar (left_at) los que ya no están en la lista
-        if (!empty($nuevosInscritos)) {
-            $in = implode(',', array_fill(0, count($nuevosInscritos), '?'));
+        // Retire (left_at) those no longer in the list
+        if (!empty($inscribedIds)) {
+            $in = implode(',', array_fill(0, count($inscribedIds), '?'));
             $pdo->prepare("UPDATE team_players SET left_at = ? WHERE team_id = ? AND player_id NOT IN ({$in}) AND left_at IS NULL")
-                ->execute(array_merge([date('Y-m-d H:i:s'), $teamId], $nuevosInscritos));
+                ->execute(array_merge([date('Y-m-d H:i:s'), $teamId], $inscribedIds));
         } else {
             $pdo->prepare('UPDATE team_players SET left_at = ? WHERE team_id = ? AND left_at IS NULL')
                 ->execute([date('Y-m-d H:i:s'), $teamId]);

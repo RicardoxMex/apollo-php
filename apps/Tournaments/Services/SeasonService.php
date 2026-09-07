@@ -12,37 +12,37 @@ class SeasonService
     ) {
     }
 
-    public function listar(): array
+    public function list(): array
     {
         return $this->seasons->query()->orderBy('starts_at', 'DESC')->get();
     }
 
-    public function mostrar(int $id): ?array
+    public function show(int $id): ?array
     {
         return $this->seasons->find($id);
     }
 
-    public function crear(int $actorId, array $data): ?string
+    public function create(int $actorId, array $data): ?string
     {
-        $nombre = trim($data['name'] ?? '');
-        if ($nombre === '') {
+        $name = trim($data['name'] ?? '');
+        if ($name === '') {
             throw new \InvalidArgumentException('El nombre de la temporada es obligatorio');
         }
 
         $id = $this->seasons->create([
-            'name' => $nombre,
+            'name' => $name,
             'starts_at' => $data['starts_at'] ?? null,
             'ends_at' => $data['ends_at'] ?? null,
         ]);
 
-        $this->audit->registrar($actorId, 'season', (int) $id, 'temporada:crear', null, ['name' => $nombre]);
+        $this->audit->record($actorId, 'season', (int) $id, 'temporada:crear', null, ['name' => $name]);
         return $id;
     }
 
-    public function actualizar(int $actorId, int $id, array $data): ?array
+    public function update(int $actorId, int $id, array $data): ?array
     {
-        $temporada = $this->seasons->find($id);
-        if (!$temporada) {
+        $season = $this->seasons->find($id);
+        if (!$season) {
             return null;
         }
 
@@ -52,19 +52,19 @@ class SeasonService
             'ends_at' => $data['ends_at'] ?? null,
         ], fn($v) => $v !== null));
 
-        $this->audit->registrar($actorId, 'season', $id, 'temporada:actualizar', $temporada);
+        $this->audit->record($actorId, 'season', $id, 'temporada:actualizar', $season);
         return $this->seasons->find($id);
     }
 
-    public function eliminar(int $actorId, int $id): bool
+    public function delete(int $actorId, int $id): bool
     {
-        $temporada = $this->seasons->find($id);
-        if (!$temporada) {
+        $season = $this->seasons->find($id);
+        if (!$season) {
             return false;
         }
 
         $this->seasons->delete($id);
-        $this->audit->registrar($actorId, 'season', $id, 'temporada:eliminar', $temporada);
+        $this->audit->record($actorId, 'season', $id, 'temporada:eliminar', $season);
         return true;
     }
 }

@@ -15,26 +15,26 @@ class TournamentRepository extends BaseRepository
     ];
 
     /**
-     * Listado con filtros (espejo del explore del frontend).
+     * Listing with filters (mirror of the frontend explore).
      */
-    public function filtrar(array $filtros, int $perPage = 20, int $page = 1): array
+    public function filter(array $filters, int $perPage = 20, int $page = 1): array
     {
         $query = $this->builder();
 
-        if (!empty($filtros['status'])) {
-            $query->where('status', $filtros['status']);
+        if (!empty($filters['status'])) {
+            $query->where('status', $filters['status']);
         }
-        if (!empty($filtros['sport'])) {
-            $query->where('sport', $filtros['sport']);
+        if (!empty($filters['sport'])) {
+            $query->where('sport', $filters['sport']);
         }
-        if (!empty($filtros['visibility'])) {
-            $query->where('visibility', $filtros['visibility']);
+        if (!empty($filters['visibility'])) {
+            $query->where('visibility', $filters['visibility']);
         }
-        if (!empty($filtros['q'])) {
-            $query->where('title', 'LIKE', "%{$filtros['q']}%");
+        if (!empty($filters['q'])) {
+            $query->where('title', 'LIKE', "%{$filters['q']}%");
         }
-        if (!empty($filtros['organizer_id'])) {
-            $query->where('organizer_id', $filtros['organizer_id']);
+        if (!empty($filters['organizer_id'])) {
+            $query->where('organizer_id', $filters['organizer_id']);
         }
 
         $total = (int) $query->count();

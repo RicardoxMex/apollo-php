@@ -6,6 +6,8 @@ use Apollo\Core\Http\Request;
 use Apollo\Core\Http\Response;
 use Apollo\Core\Auth\Models\Role;
 use Apollo\Core\Database\QueryBuilder;
+use Apollo\Core\Validation\ValidationException;
+use Apollo\Core\Validation\Validator;
 use Apps\ApolloAuth\Models\User;
 use Apollo\Core\Database\Model as BaseModel;
 use Exception;
@@ -142,7 +144,7 @@ class AdminController
     {
         try {
             $userId = $request->attributes['id'] ?? null;
-            $data = $request->json();
+            $data = $request->json() ?? [];
 
             if (!$userId) {
                 return Response::json([
@@ -150,6 +152,15 @@ class AdminController
                     'message' => 'User ID is required'
                 ], 400);
             }
+
+            Validator::make($data, [
+                'username'   => 'sometimes|string|min:3|max:50',
+                'email'      => 'sometimes|email|max:120',
+                'first_name' => 'sometimes|nullable|string|max:60',
+                'last_name'  => 'sometimes|nullable|string|max:60',
+                'phone'      => 'sometimes|nullable|string|max:30',
+                'status'     => 'sometimes|in:active,inactive,suspended',
+            ])->validateOrFail();
 
             $user = User::find($userId);
 
@@ -193,6 +204,11 @@ class AdminController
                 ]
             ]);
 
+        } catch (ValidationException $e) {
+            return Response::json([
+                'error' => 'Validation Error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Exception $e) {
             return Response::json([
                 'error' => 'Server Error',
@@ -208,14 +224,18 @@ class AdminController
     {
         try {
             $userId = $request->attributes['id'] ?? null;
-            $data = $request->json();
+            $data = $request->json() ?? [];
 
-            if (!$userId || !isset($data['role'])) {
+            if (!$userId) {
                 return Response::json([
                     'error' => 'Validation Error',
                     'message' => 'User ID and role are required'
                 ], 400);
             }
+
+            Validator::make($data, [
+                'role' => 'required|string|exists:roles,name',
+            ])->validateOrFail();
 
             $user = User::find($userId);
             if (!$user) {
@@ -240,6 +260,11 @@ class AdminController
                 'message' => 'Role assigned successfully'
             ]);
 
+        } catch (ValidationException $e) {
+            return Response::json([
+                'error' => 'Validation Error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Exception $e) {
             return Response::json([
                 'error' => 'Server Error',
@@ -334,14 +359,15 @@ class AdminController
     public function storeRole(Request $request): Response
     {
         try {
-            $data = $request->json();
+            $data = $request->json() ?? [];
 
-            if (!$data || empty($data['name'])) {
-                return Response::json([
-                    'error' => 'Validation Error',
-                    'message' => 'Role name is required'
-                ], 400);
-            }
+            Validator::make($data, [
+                'name'         => 'required|string|min:2|max:50|unique:roles,name',
+                'display_name' => 'nullable|string|max:80',
+                'description'  => 'nullable|string|max:255',
+                'is_system'    => 'nullable|boolean',
+                'permissions'  => 'nullable|array',
+            ])->validateOrFail();
 
             if (Role::where('name', $data['name'])->first()) {
                 return Response::json([
@@ -371,6 +397,11 @@ class AdminController
                 ]]
             ], 201);
 
+        } catch (ValidationException $e) {
+            return Response::json([
+                'error' => 'Validation Error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Exception $e) {
             return Response::json([
                 'error' => 'Server Error',
@@ -402,6 +433,14 @@ class AdminController
             }
 
             $data = $request->json() ?? [];
+
+            Validator::make($data, [
+                'name'         => 'sometimes|string|min:2|max:50',
+                'display_name' => 'sometimes|nullable|string|max:80',
+                'description'  => 'sometimes|nullable|string|max:255',
+                'permissions'  => 'sometimes|array',
+            ])->validateOrFail();
+
             $attrs = [];
 
             foreach (['display_name', 'description'] as $field) {
@@ -437,6 +476,11 @@ class AdminController
                 ]]
             ]);
 
+        } catch (ValidationException $e) {
+            return Response::json([
+                'error' => 'Validation Error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Exception $e) {
             return Response::json([
                 'error' => 'Server Error',
@@ -526,9 +570,14 @@ class AdminController
             }
 
             $data = $request->json() ?? [];
+
+            Validator::make($data, [
+                'permissions' => 'required|array',
+            ])->validateOrFail();
+
             $permissions = $data['permissions'] ?? [];
 
-            if (!is_array($permissions) || empty($permissions)) {
+            if (empty($permissions)) {
                 return Response::json([
                     'error' => 'Validation Error',
                     'message' => 'permissions[] is required'
@@ -544,6 +593,11 @@ class AdminController
                 'data' => ['permissions' => $roleModel->permissionNames()]
             ]);
 
+        } catch (ValidationException $e) {
+            return Response::json([
+                'error' => 'Validation Error',
+                'errors' => $e->errors()
+            ], 422);
         } catch (Exception $e) {
             return Response::json([
                 'error' => 'Server Error',

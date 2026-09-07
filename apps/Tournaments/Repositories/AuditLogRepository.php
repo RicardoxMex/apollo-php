@@ -8,21 +8,21 @@ class AuditLogRepository extends BaseRepository
 {
     protected string $table = 'audit_logs';
 
-    public function registrar(int|string|null $actorId, string $entityType, int|string $entityId, string $accion, ?array $antes = null, ?array $despues = null, ?string $ip = null, ?string $userAgent = null): ?string
+    public function record(int|string|null $actorId, string $entityType, int|string $entityId, string $action, ?array $before = null, ?array $after = null, ?string $ip = null, ?string $userAgent = null): ?string
     {
         return $this->create([
             'actor_id' => $actorId,
             'entity_type' => $entityType,
             'entity_id' => $entityId,
-            'action' => $accion,
-            'before_data' => $antes !== null ? json_encode($antes) : null,
-            'after_data' => $despues !== null ? json_encode($despues) : null,
+            'action' => $action,
+            'before_data' => $before !== null ? json_encode($before) : null,
+            'after_data' => $after !== null ? json_encode($after) : null,
             'ip_address' => $ip,
             'user_agent' => $userAgent,
         ]);
     }
 
-    public function filtrar(?string $entityType = null, ?int $entityId = null, int $perPage = 25, int $page = 1): array
+    public function filter(?string $entityType = null, ?int $entityId = null, int $perPage = 25, int $page = 1): array
     {
         $query = $this->builder();
         if ($entityType) {

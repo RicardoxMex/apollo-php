@@ -10,35 +10,35 @@ use PDO;
 class TournamentService
 {
     public function __construct(
-        private TournamentRepository $torneos,
+        private TournamentRepository $tournaments,
         private AuditLogService $audit,
     ) {
     }
 
     /**
-     * Listado público (explore): filtros + paginación, ENUMs mapeados a la API.
+     * Public listing (explore): filters + pagination, ENUMs mapped to the API.
      */
-    public function index(array $filtros, int $perPage = 20, int $page = 1): array
+    public function index(array $filters, int $perPage = 20, int $page = 1): array
     {
-        $filtros['visibility'] = Mapeos::visibilidadDesdeApi($filtros['visibility'] ?? null) ?? $filtros['visibility'] ?? null;
-        $result = $this->torneos->filtrar($filtros, $perPage, $page);
+        $filters['visibility'] = Mappings::visibilityFromApi($filters['visibility'] ?? null) ?? $filters['visibility'] ?? null;
+        $result = $this->tournaments->filter($filters, $perPage, $page);
 
         foreach ($result['data'] as &$t) {
-            $t['format'] = Mapeos::formatoHaciaApi($t['format'] ?? null);
-            $t['visibility'] = Mapeos::visibilidadHaciaApi($t['visibility'] ?? null);
-            $t['deleted_at'] = null; // el repo no expone soft-delete en el listado público
+            $t['format'] = Mappings::formatToApi($t['format'] ?? null);
+            $t['visibility'] = Mappings::visibilityToApi($t['visibility'] ?? null);
+            $t['deleted_at'] = null; // the repository does not expose soft-delete in the public listing
         }
 
         return $result;
     }
 
     /**
-     * Detalle de un torneo con sus sub-recursos de configuración.
+     * Tournament detail with its configuration sub-resources.
      */
-    public function mostrar(int $id): ?array
+    public function show(int $id): ?array
     {
-        $torneo = $this->torneos->find($id);
-        if (!$torneo || $torneo['deleted_at'] !== null) {
+        $tournament = $this->tournaments->find($id);
+        if (!$tournament || $tournament['deleted_at'] !== null) {
             return null;
         }
 
@@ -46,67 +46,67 @@ class TournamentService
 
         $stmt = $pdo->prepare('SELECT * FROM tournament_prizes WHERE tournament_id = ? ORDER BY position ASC');
         $stmt->execute([$id]);
-        $torneo['prizes'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $tournament['prizes'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $stmt = $pdo->prepare('SELECT * FROM tournament_stats WHERE tournament_id = ? ORDER BY id ASC');
         $stmt->execute([$id]);
-        $torneo['stats'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $tournament['stats'] = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
         $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM tournament_registrations WHERE tournament_id = ? AND status = 'accepted'");
         $stmt->execute([$id]);
-        $torneo['aceptados'] = (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+        $tournament['aceptados'] = (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
 
         $stmt = $pdo->prepare('SELECT COUNT(*) AS total FROM draws WHERE tournament_id = ?');
         $stmt->execute([$id]);
-        $torneo['tiene_draw'] = ((int) $stmt->fetch(PDO::FETCH_ASSOC)['total']) > 0;
+        $tournament['tiene_draw'] = ((int) $stmt->fetch(PDO::FETCH_ASSOC)['total']) > 0;
 
-        $torneo['format'] = Mapeos::formatoHaciaApi($torneo['format'] ?? null);
-        $torneo['visibility'] = Mapeos::visibilidadHaciaApi($torneo['visibility'] ?? null);
+        $tournament['format'] = Mappings::formatToApi($tournament['format'] ?? null);
+        $tournament['visibility'] = Mappings::visibilityToApi($tournament['visibility'] ?? null);
 
-        return $torneo;
+        return $tournament;
     }
 
     /**
-     * Crea el torneo (borrador) con premios y stats opcionales.
+     * Creates the tournament (draft) with optional prizes and stats.
      */
-    public function crear(int $actorId, array $data, ?Request $request = null): ?array
+    public function create(int $actorId, array $data, ?Request $request = null): ?array
     {
-        $titulo = trim($data['title'] ?? '');
-        $formato = Mapeos::formatoDesdeApi($data['format'] ?? null);
-        $max = (int) ($data['max_participants'] ?? 0);
+        $title = trim($data['title'] ?? '');
+        $format = Mappings::formatFromApi($data['format'] ?? null);
+        $maxParticipants = (int) ($data['max_participants'] ?? 0);
 
-        if ($titulo === '') {
+        if ($title === '') {
             throw new \InvalidArgumentException('El título del torneo es obligatorio');
         }
-        if ($formato === null) {
+        if ($format === null) {
             throw new \InvalidArgumentException('Formato inválido');
         }
-        if ($max < 2) {
+        if ($maxParticipants < 2) {
             throw new \InvalidArgumentException('El cupo máximo debe ser al menos 2');
         }
 
         $pdo = DatabaseManager::getConnection();
         $pdo->beginTransaction();
         try {
-            $id = $this->torneos->create([
+            $id = $this->tournaments->create([
                 'organizer_id' => $actorId,
                 'season_id' => !empty($data['season_id']) ? (int) $data['season_id'] : null,
-                'title' => $titulo,
+                'title' => $title,
                 'sport' => trim($data['sport'] ?? ''),
                 'description' => $data['description'] ?? null,
                 'location' => $data['location'] ?? null,
                 'is_online' => !empty($data['is_online']) ? 1 : 0,
                 'image' => $data['image'] ?? null,
                 'status' => 'draft',
-                'format' => $formato,
-                'max_participants' => $max,
+                'format' => $format,
+                'max_participants' => $maxParticipants,
                 'is_individual' => !empty($data['is_individual']) ? 1 : 0,
                 'start_date' => $data['start_date'] ?? null,
                 'end_date' => $data['end_date'] ?? null,
                 'registration_deadline' => $data['registration_deadline'] ?? null,
                 'registration_fee' => $data['registration_fee'] ?? 0,
                 'currency' => strtoupper($data['currency'] ?? 'USD'),
-                'visibility' => Mapeos::visibilidadDesdeApi($data['visibility'] ?? 'publico') ?? 'public',
+                'visibility' => Mappings::visibilityFromApi($data['visibility'] ?? 'publico') ?? 'public',
                 'minimum_age' => !empty($data['minimum_age']) ? (int) $data['minimum_age'] : null,
                 'rules' => $data['rules'] ?? null,
                 'max_substitutes' => (int) ($data['max_substitutes'] ?? 0),
@@ -114,13 +114,13 @@ class TournamentService
 
             if (!empty($data['prizes']) && is_array($data['prizes'])) {
                 $stmt = $pdo->prepare('INSERT INTO tournament_prizes (tournament_id, position, amount, currency, label) VALUES (?, ?, ?, ?, ?)');
-                foreach (array_slice($data['prizes'], 0, 3) as $premio) {
+                foreach (array_slice($data['prizes'], 0, 3) as $prize) {
                     $stmt->execute([
                         $id,
-                        (int) ($premio['position'] ?? 1),
-                        $premio['amount'] ?? 0,
-                        strtoupper($premio['currency'] ?? $data['currency'] ?? 'USD'),
-                        $premio['label'] ?? null,
+                        (int) ($prize['position'] ?? 1),
+                        $prize['amount'] ?? 0,
+                        strtoupper($prize['currency'] ?? $data['currency'] ?? 'USD'),
+                        $prize['label'] ?? null,
                     ]);
                 }
             }
@@ -143,56 +143,56 @@ class TournamentService
             throw $e;
         }
 
-        $this->audit->registrar($actorId, 'tournament', (int) $id, 'torneo:crear', null, ['title' => $titulo], $request);
-        return $this->mostrar((int) $id);
+        $this->audit->record($actorId, 'tournament', (int) $id, 'torneo:crear', null, ['title' => $title], $request);
+        return $this->show((int) $id);
     }
 
     /**
-     * Actualiza aplicando las reglas de edición por estado (lib/edicion.ts).
+     * Updates applying the per-state editing rules (lib/edicion.ts).
      */
-    public function actualizar(int $actorId, int $id, array $data, ?Request $request = null): ?array
+    public function update(int $actorId, int $id, array $data, ?Request $request = null): ?array
     {
-        $torneo = $this->torneos->find($id);
-        if (!$torneo || $torneo['deleted_at'] !== null) {
+        $tournament = $this->tournaments->find($id);
+        if (!$tournament || $tournament['deleted_at'] !== null) {
             return null;
         }
-        $this->verificarOrganizador($actorId, $torneo);
+        $this->ensureOrganizer($actorId, $tournament);
 
-        $editables = ReglasTorneo::filtrarEditables($torneo['status'], $data);
-        if ($editables === [] && $data !== []) {
+        $editable = TournamentRules::filterEditableFields($tournament['status'], $data);
+        if ($editable === [] && $data !== []) {
             throw new \RuntimeException('Este torneo no admite edición en su estado actual');
         }
 
-        $this->torneos->update($id, $editables);
-        $this->audit->registrar($actorId, 'tournament', $id, 'torneo:actualizar', $torneo, $editables, $request);
-        return $this->mostrar($id);
+        $this->tournaments->update($id, $editable);
+        $this->audit->record($actorId, 'tournament', $id, 'torneo:actualizar', $tournament, $editable, $request);
+        return $this->show($id);
     }
 
-    public function eliminar(int $actorId, int $id, ?Request $request = null): bool
+    public function delete(int $actorId, int $id, ?Request $request = null): bool
     {
-        $torneo = $this->torneos->find($id);
-        if (!$torneo || $torneo['deleted_at'] !== null) {
+        $tournament = $this->tournaments->find($id);
+        if (!$tournament || $tournament['deleted_at'] !== null) {
             return false;
         }
-        $this->verificarOrganizador($actorId, $torneo);
+        $this->ensureOrganizer($actorId, $tournament);
 
-        $this->torneos->update($id, ['deleted_at' => date('Y-m-d H:i:s')]);
-        $this->audit->registrar($actorId, 'tournament', $id, 'torneo:eliminar', $torneo, null, $request);
+        $this->tournaments->update($id, ['deleted_at' => date('Y-m-d H:i:s')]);
+        $this->audit->record($actorId, 'tournament', $id, 'torneo:eliminar', $tournament, null, $request);
         return true;
     }
 
     /**
-     * Transiciones del ciclo: publish (draft→open), start (open→live), finish (live→finished).
+     * Lifecycle transitions: publish (draft→open), start (open→live), finish (live→finished).
      */
-    public function transicion(int $actorId, int $id, string $accion, ?Request $request = null): ?array
+    public function transition(int $actorId, int $id, string $action, ?Request $request = null): ?array
     {
-        $torneo = $this->torneos->find($id);
-        if (!$torneo || $torneo['deleted_at'] !== null) {
+        $tournament = $this->tournaments->find($id);
+        if (!$tournament || $tournament['deleted_at'] !== null) {
             return null;
         }
-        $this->verificarOrganizador($actorId, $torneo);
+        $this->ensureOrganizer($actorId, $tournament);
 
-        $estadoSiguiente = match ($accion) {
+        $nextStatus = match ($action) {
             'publish' => 'open',
             'start' => 'live',
             'finish' => 'finished',
@@ -201,28 +201,28 @@ class TournamentService
 
         $pdo = DatabaseManager::getConnection();
 
-        if ($accion === 'publish') {
-            $check = ReglasTorneo::puedePublicar($torneo + ['aceptados' => $this->contarAceptados($pdo, $id)]);
-        } elseif ($accion === 'start') {
-            $check = ReglasTorneo::puedeIniciar($torneo + ['tiene_draw' => $this->tieneDraw($pdo, $id)]);
+        if ($action === 'publish') {
+            $check = TournamentRules::canPublish($tournament + ['aceptados' => $this->countAccepted($pdo, $id)]);
+        } elseif ($action === 'start') {
+            $check = TournamentRules::canStart($tournament + ['tiene_draw' => $this->hasDraw($pdo, $id)]);
         } else {
-            $check = ReglasTorneo::puedeFinalizar($torneo + ['final_con_ganador' => $this->finalConGanador($pdo, $id)]);
+            $check = TournamentRules::canFinish($tournament + ['final_con_ganador' => $this->hasFinalWinner($pdo, $id)]);
         }
 
         if (!$check['ok']) {
-            throw new \RuntimeException($check['motivo']);
+            throw new \RuntimeException($check['reason']);
         }
 
-        $this->torneos->update($id, ['status' => $estadoSiguiente]);
-        $this->audit->registrar($actorId, 'tournament', $id, "torneo:{$accion}", ['status' => $torneo['status']], ['status' => $estadoSiguiente], $request);
+        $this->tournaments->update($id, ['status' => $nextStatus]);
+        $this->audit->record($actorId, 'tournament', $id, "torneo:{$action}", ['status' => $tournament['status']], ['status' => $nextStatus], $request);
 
-        return $this->mostrar($id);
+        return $this->show($id);
     }
 
     /**
-     * Lista de participantes resueltos (equipo o jugador) con su seed.
+     * Resolved participants (team or player) with their seed.
      */
-    public function participantes(int $torneoId): array
+    public function participants(int $tournamentId): array
     {
         $pdo = DatabaseManager::getConnection();
         $stmt = $pdo->prepare(
@@ -234,37 +234,37 @@ class TournamentService
              WHERE tp.tournament_id = ?
              ORDER BY tp.seed ASC, tp.id ASC'
         );
-        $stmt->execute([$torneoId]);
+        $stmt->execute([$tournamentId]);
         return $stmt->fetchAll(PDO::FETCH_ASSOC);
     }
 
-    public function esOrganizador(int $userId, array $torneo): bool
+    public function isOrganizer(int $userId, array $tournament): bool
     {
-        return (int) $torneo['organizer_id'] === (int) $userId;
+        return (int) $tournament['organizer_id'] === (int) $userId;
     }
 
-    private function verificarOrganizador(int $userId, array $torneo): void
+    private function ensureOrganizer(int $userId, array $tournament): void
     {
-        if (!$this->esOrganizador($userId, $torneo)) {
+        if (!$this->isOrganizer($userId, $tournament)) {
             throw new \RuntimeException('No eres el organizador de este torneo', 403);
         }
     }
 
-    private function contarAceptados(PDO $pdo, int $torneoId): int
+    private function countAccepted(PDO $pdo, int $tournamentId): int
     {
         $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM tournament_registrations WHERE tournament_id = ? AND status = 'accepted'");
-        $stmt->execute([$torneoId]);
+        $stmt->execute([$tournamentId]);
         return (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
     }
 
-    private function tieneDraw(PDO $pdo, int $torneoId): bool
+    private function hasDraw(PDO $pdo, int $tournamentId): bool
     {
         $stmt = $pdo->prepare('SELECT COUNT(*) AS total FROM draws WHERE tournament_id = ?');
-        $stmt->execute([$torneoId]);
+        $stmt->execute([$tournamentId]);
         return ((int) $stmt->fetch(PDO::FETCH_ASSOC)['total']) > 0;
     }
 
-    private function finalConGanador(PDO $pdo, int $torneoId): bool
+    private function hasFinalWinner(PDO $pdo, int $tournamentId): bool
     {
         $stmt = $pdo->prepare(
             "SELECT COUNT(*) AS total FROM matches
@@ -273,7 +273,7 @@ class TournamentService
                AND status = 'completed'
                AND winner_participant_id IS NOT NULL"
         );
-        $stmt->execute([$torneoId, $torneoId]);
+        $stmt->execute([$tournamentId, $tournamentId]);
         return ((int) $stmt->fetch(PDO::FETCH_ASSOC)['total']) > 0;
     }
 }
