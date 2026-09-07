@@ -4,6 +4,7 @@
 namespace Apollo\Core\Http;
 
 use Apollo\Core\Container\Container;
+use Apollo\Core\Validation\Validator;
 
 abstract class Controller {
     protected Container $container;
@@ -31,5 +32,13 @@ abstract class Controller {
     
     protected function redirect(string $url, int $status = 302) {
         return Response::redirect($url, $status);
+    }
+
+    protected function validate(array $data, array $rules, array $messages = []): array
+    {
+        $validator = Validator::make($data, $rules, $messages);
+        $validator->validateOrFail();
+
+        return $validator->validated();
     }
 }
