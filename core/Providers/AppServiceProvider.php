@@ -13,7 +13,9 @@ class AppServiceProvider extends ServiceProvider {
         $this->container->singleton(Kernel::class, function($app) {
             $kernel = new Kernel($app, $app->make('router'));
             $kernel->setMiddleware([
-                // Middleware global se agregará aquí
+                // CORS global: responde preflights OPTIONS y agrega headers a toda
+                // la API (binding 'cors' registrado por Apps\Users\UsersServiceProvider)
+                'cors',
             ]);
             return $kernel;
         });

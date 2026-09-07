@@ -23,14 +23,16 @@ use Apps\Tournaments\Controllers\TournamentController;
 /** @var \Apollo\Core\Router\Router $router */
 
 // ─── Public reads (explore, detail, bracket, matches) ───
-$router->get('/tournaments', [TournamentController::class, 'index'])->name('tournaments.index');
-$router->get('/tournaments/{id}', [TournamentController::class, 'show'])->where(['id' => '\d+'])->name('tournaments.show');
-$router->get('/tournaments/{id}/participants', [TournamentController::class, 'participants'])->where(['id' => '\d+'])->name('tournaments.participants');
-$router->get('/tournaments/{id}/draws', [TournamentController::class, 'draws'])->where(['id' => '\d+'])->name('tournaments.draws');
-$router->get('/tournaments/{id}/matches', [MatchController::class, 'index'])->where(['id' => '\d+'])->name('tournaments.matches');
+$router->group(['middleware' => ['cors']], function ($router) {
+    $router->get('/tournaments', [TournamentController::class, 'index'])->name('tournaments.index');
+    $router->get('/tournaments/{id}', [TournamentController::class, 'show'])->where(['id' => '\d+'])->name('tournaments.show');
+    $router->get('/tournaments/{id}/participants', [TournamentController::class, 'participants'])->where(['id' => '\d+'])->name('tournaments.participants');
+    $router->get('/tournaments/{id}/draws', [TournamentController::class, 'draws'])->where(['id' => '\d+'])->name('tournaments.draws');
+    $router->get('/tournaments/{tournamentId}/matches', [MatchController::class, 'index'])->where(['tournamentId' => '\d+'])->name('tournaments.matches');
+});
 
 // ─── Writes with auth (JWT) ───
-$router->group(['middleware' => ['auth']], function ($router) {
+$router->group(['middleware' => ['auth', 'cors']], function ($router) {
     // Tournaments: CRUD + cycle + draw + moderation
     $router->post('/tournaments', [TournamentController::class, 'store'])->name('tournaments.store');
     $router->put('/tournaments/{id}', [TournamentController::class, 'update'])->where(['id' => '\d+'])->name('tournaments.update');
@@ -41,13 +43,13 @@ $router->group(['middleware' => ['auth']], function ($router) {
     $router->post('/tournaments/{id}/draw', [TournamentController::class, 'generateDraw'])->where(['id' => '\d+'])->name('tournaments.draw.generate');
 
     // Registration requests (anyone can apply; only the organizer decides)
-    $router->get('/tournaments/{id}/registrations', [TournamentController::class, 'registrations'])->where(['id' => '\d+'])->name('tournaments.registrations');
-    $router->post('/tournaments/{id}/registrations', [RegistrationController::class, 'apply'])->where(['id' => '\d+'])->name('registrations.apply');
-    $router->post('/tournaments/{id}/registrations/{rid}/decide', [RegistrationController::class, 'decide'])->where(['id' => '\d+', 'rid' => '\d+'])->name('registrations.decide');
-    $router->post('/tournaments/{id}/registrations/{rid}/cancel', [RegistrationController::class, 'cancel'])->where(['id' => '\d+', 'rid' => '\d+'])->name('registrations.cancel');
+    $router->get('/tournaments/{tournamentId}/registrations', [TournamentController::class, 'registrations'])->where(['tournamentId' => '\d+'])->name('tournaments.registrations');
+    $router->post('/tournaments/{tournamentId}/registrations', [RegistrationController::class, 'apply'])->where(['tournamentId' => '\d+'])->name('registrations.apply');
+    $router->post('/tournaments/{tournamentId}/registrations/{registrationId}/decide', [RegistrationController::class, 'decide'])->where(['tournamentId' => '\d+', 'registrationId' => '\d+'])->name('registrations.decide');
+    $router->post('/tournaments/{tournamentId}/registrations/{registrationId}/cancel', [RegistrationController::class, 'cancel'])->where(['tournamentId' => '\d+', 'registrationId' => '\d+'])->name('registrations.cancel');
 
     // Matches (organizer only; tournament live)
-    $router->put('/tournaments/{id}/matches/{mid}', [MatchController::class, 'update'])->where(['id' => '\d+', 'mid' => '\d+'])->name('matches.update');
+    $router->put('/tournaments/{tournamentId}/matches/{matchId}', [MatchController::class, 'update'])->where(['tournamentId' => '\d+', 'matchId' => '\d+'])->name('matches.update');
 
     // Teams, players, seasons
     $router->get('/teams', [TeamController::class, 'index'])->name('teams.index');

@@ -178,12 +178,12 @@ class TournamentController extends Controller
         }
     }
 
-    public function registrations($id)
+    public function registrations($tournamentId)
     {
         try {
             return $this->json([
                 'success' => true,
-                'data' => $this->registrations->list((int) $id, $this->actorId(), $this->request->query('status')),
+                'data' => $this->registrations->list((int) $tournamentId, $this->actorId(), $this->request->query('status')),
             ]);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);

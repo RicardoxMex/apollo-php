@@ -43,9 +43,11 @@ class CorsMiddleware {
         if ($response instanceof Response) {
             return $response->withHeaders($this->getCorsHeaders($request));
         }
-        
-        // Si no es una instancia de Response, crear una nueva
-        return Response::json($response)->withHeaders($this->getCorsHeaders($request));
+
+        // En el pipeline global del Kernel (sin acción terminal) $next devuelve
+        // la Request para continuar el dispatch; los headers se agregan en el
+        // pipeline de ruta. Nunca serializar el pasable como respuesta.
+        return $response;
     }
     
     private function getCorsHeaders(?Request $request = null): array {
