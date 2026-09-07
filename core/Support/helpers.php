@@ -184,3 +184,13 @@ if (!function_exists('realtime')) {
         return app($abstract);
     }
 }
+
+if (!function_exists('validator')) {
+    /**
+     * Crear un validador de datos (core/Validation).
+     */
+    function validator(array $data, array $rules, array $messages = [])
+    {
+        return \Apollo\Core\Validation\Validator::make($data, $rules, $messages);
+    }
+}

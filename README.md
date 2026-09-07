@@ -16,11 +16,12 @@ Mini-framework **PHP** para construir **APIs REST modulares**, inspirado en Djan
 ## ✨ Características
 
 - **Apps modulares** al estilo Django: `apps/<App>/` con `app.json` (prefijo, providers, rutas) y auto-registro.
-- **Kernel propio:** `Application`, `Config`, `Container` (DI), `Router`, `Http`, `Database`, `Auth`, `Console`.
+- **Kernel propio:** `Application`, `Config`, `Container` (DI), `Router`, `Http`, `Database`, `Auth`, `Validation`, `Console`.
 - **Router** con grupos, middleware, parámetros (`{id}` con `where`), rutas nombradas y `GET/POST/PUT/PATCH/DELETE`.
 - **DB intercambiable**: MySQL **o** SQLite (`DB_DRIVER`) con Schema/Blueprint driver-aware, migraciones y seeders.
 - **Auth JWT real** (`ApolloAuth`): login, sesiones con revocación, refresh, logout-all, roles/permisos.
 - **Módulo de acceso (core, activable)**: tabla `permissions` + pivot `role_permissions`, gates `role.admin`/`role.user`, endpoints admin de gestión.
+- **Validación (core)**: `Validator::make()`, 27 reglas (`required`, `email`, `min/max/between`, `in`, `unique/exists` con BD…), mensajes por campo, reglas personalizadas (closure/`Rule`/`extend`) y `validate()` en el Controller base.
 - **Realtime opcional**: WebSockets (OpenSwoole), canales público/privado/presence, Redis opcional con fallback local, notificaciones (DB + realtime), SDK JS.
 - **CLI completo**: 17 comandos (generadores `make:*`, `route:list`, `realtime:*`, self-check…).
 - **Testing**: suite PHPUnit sin DB + integración SQLite opcional.
@@ -115,6 +116,7 @@ core/                 kernel del framework (Apollo\Core\)
   Http/               Kernel, Request, Response, Controller base
   Database/           Model, QueryBuilder, Migration, Schema/Blueprint,
                       Connection (MySQL|SQLite), Repository base
+  Validation/         Validator + RuleRegistry (27 reglas, mensajes, custom) + ValidationException
   Auth/               JWT + módulo de acceso (HasRoles, Role, Permission,
                       RoleMiddleware, PermissionMiddleware) — activable
   Realtime/           WebSockets/EventBus/Notificaciones (opcional)
@@ -150,7 +152,7 @@ tests/                suite PHPUnit (sin DB + integración SQLite)
 ## 🧪 Testing
 
 ```bash
-composer test                      # PHPUnit: 89 tests, 212 aserciones
+composer test                      # PHPUnit: 125 tests, 332 aserciones
                                    #  - sin DB: router, container, JWT, auth, realtime (buses/channels)
                                    #  - integración SQLite opcional (requiere extension=pdo_sqlite)
 php apollo test                    # self-check rápido (sin DB)
@@ -162,6 +164,7 @@ php test_middleware.php            # smoke de middlewares (200/401/404)
 - [docs/README.md](docs/README.md) — índice del manual
 - [docs/app-structure.md](docs/app-structure.md) — estructura de apps y `app.json`
 - [docs/authentication-system.md](docs/authentication-system.md) — auth, roles y permisos
+- [docs/validation.md](docs/validation.md) — motor de validación del core (reglas, mensajes, custom)
 - [docs/cli-commands.md](docs/cli-commands.md) — cómo crear comandos CLI propios
 - [docs/realtime.md](docs/realtime.md) — módulo realtime (websockets/notificaciones)
 
