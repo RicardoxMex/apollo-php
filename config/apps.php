@@ -13,6 +13,7 @@ return [
         'ApolloAuth',
         'Users',
         'Products',
+        'Tournaments',
     ],
 
     /*

@@ -46,6 +46,15 @@ class ColumnDefinition
     }
 
     /**
+     * Make column unsigned (only meaningful for numeric types)
+     */
+    public function unsigned(): self
+    {
+        $this->type .= " UNSIGNED";
+        return $this;
+    }
+
+    /**
      * Make column unique
      */
     public function unique(): self
@@ -168,6 +177,10 @@ class ForeignKeyDefinition extends ColumnDefinition
 
         // Generar un nombre único para la constraint incluyendo la tabla origen
         $constraintName = "fk_" . $this->tableName . "_" . $this->name . "_" . $this->on;
+        // MySQL limita los identificadores a 64 chars: acortar con hash cuando exceda
+        if (strlen($constraintName) > 64) {
+            $constraintName = "fk_" . substr(hash('sha256', $constraintName), 0, 24);
+        }
         return "CONSTRAINT `{$constraintName}` FOREIGN KEY (`{$this->name}`) REFERENCES `{$this->on}` (`{$this->references}`) ON DELETE {$this->onDelete} ON UPDATE {$this->onUpdate}";
     }
 }

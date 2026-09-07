@@ -32,7 +32,7 @@ try {
     
     echo "✓ Conexión a base de datos establecida\n";
     
-    // Ejecutar migraciones (todas las *.php ordenadas: 001..008)
+    // Ejecutar migraciones (todas las *.php ordenadas: 001..028)
     echo "Ejecutando migraciones...\n";
 
     $migrationFiles = glob('database/migrations/*.php');
@@ -40,7 +40,7 @@ try {
 
     // Primero eliminar tablas existentes en orden inverso (por las foreign keys)
     echo "Eliminando tablas existentes...\n";
-    $tablesToDrop = ['rate_limits', 'password_resets', 'user_sessions', 'role_permissions', 'user_roles', 'permissions', 'roles', 'users'];
+    $tablesToDrop = ['auth_refresh_tokens', 'match_player_stats', 'match_scores', 'matches', 'draw_matches', 'draw_rounds', 'draw_group_participants', 'draw_groups', 'draws', 'tournament_participants', 'tournament_registrations', 'tournament_stats', 'tournament_prizes', 'tournaments', 'tournament_seasons', 'team_players', 'players', 'team_captains', 'teams', 'rate_limits', 'password_resets', 'user_sessions', 'role_permissions', 'user_roles', 'permissions', 'roles', 'notifications', 'users'];
     foreach ($tablesToDrop as $table) {
         try {
             $pdo->exec("DROP TABLE IF EXISTS `{$table}`");
