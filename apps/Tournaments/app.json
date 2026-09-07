@@ -1,0 +1,9 @@
+{
+    "name": "tournaments",
+    "version": "1.0.0",
+    "description": "Tournament management: teams, players, registrations, draws, matches and results",
+    "author": "Sport Tournament Pro",
+    "prefix": "api",
+    "providers": [],
+    "routes": ["api.php"]
+}
