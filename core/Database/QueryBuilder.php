@@ -87,7 +87,11 @@ class QueryBuilder {
     
     public function orderBy(string $column, string $direction = 'ASC'): self {
         $direction = strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC';
-        $this->queryParts['order'] = "ORDER BY {$column} {$direction}";
+        $order = "{$column} {$direction}";
+        // Acumulativo: permite ORDER BY de varias columnas
+        $this->queryParts['order'] = !empty($this->queryParts['order'])
+            ? $this->queryParts['order'] . ", {$order}"
+            : "ORDER BY {$order}";
         return $this;
     }
     

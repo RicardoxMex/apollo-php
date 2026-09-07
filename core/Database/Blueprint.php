@@ -66,6 +66,75 @@ class Blueprint
     }
 
     /**
+     * Add tiny integer column (TINYINT)
+     */
+    public function tinyInteger(string $name): ColumnDefinition
+    {
+        $column = new ColumnDefinition($name, "TINYINT");
+        $this->columns[] = $column;
+        return $column;
+    }
+
+    /**
+     * Add big integer column (BIGINT UNSIGNED, sin auto-increment)
+     */
+    public function unsignedBigInteger(string $name): ColumnDefinition
+    {
+        $column = new ColumnDefinition($name, "BIGINT UNSIGNED");
+        $this->columns[] = $column;
+        return $column;
+    }
+
+    /**
+     * Add decimal column with precision and scale
+     */
+    public function decimal(string $name, int $precision = 12, int $scale = 2): ColumnDefinition
+    {
+        $column = new ColumnDefinition($name, "DECIMAL({$precision},{$scale})");
+        $this->columns[] = $column;
+        return $column;
+    }
+
+    /**
+     * Add fixed-length char column
+     */
+    public function char(string $name, int $length = 1): ColumnDefinition
+    {
+        $column = new ColumnDefinition($name, "CHAR({$length})");
+        $this->columns[] = $column;
+        return $column;
+    }
+
+    /**
+     * Add date column (SQLite: se almacena como TEXT)
+     */
+    public function date(string $name): ColumnDefinition
+    {
+        $column = new ColumnDefinition($name, "DATE");
+        $this->columns[] = $column;
+        return $column;
+    }
+
+    /**
+     * Add composite primary key (table-level)
+     */
+    public function primaryKey($columns, ?string $name = null): self
+    {
+        if (is_string($columns)) {
+            $columns = [$columns];
+        }
+
+        $indexName = $name ?? $this->table . '_pkey';
+        $columnsList = '`' . implode('`, `', $columns) . '`';
+
+        $this->indexes[] = $this->isSqlite()
+            ? "CONSTRAINT `{$indexName}` PRIMARY KEY ({$columnsList})"
+            : "PRIMARY KEY `{$indexName}` ({$columnsList})";
+
+        return $this;
+    }
+
+    /**
      * Add boolean column
      */
     public function boolean(string $name): ColumnDefinition
