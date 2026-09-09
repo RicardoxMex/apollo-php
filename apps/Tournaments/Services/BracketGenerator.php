@@ -100,6 +100,53 @@ class BracketGenerator
     }
 
     /**
+     * Round-robin fixtures for a group (single round, circle method).
+     * With an odd number of teams one rests per jornada (bye).
+     *
+     * @param array $participantIds ids of tournament_participants
+     * @return array{round_number:int, match_number:int, participant_a_id:int|null, participant_b_id:int|null}[]
+     *         `match_number` is global (consecutive across jornadas).
+     */
+    public static function generateRoundRobin(array $participantIds): array
+    {
+        $teams = array_values($participantIds);
+        $count = count($teams);
+        if ($count < 2) {
+            return [];
+        }
+
+        // Odd count: add a dummy that rests (never paired with a real team twice).
+        if ($count % 2 === 1) {
+            $teams[] = null;
+            $count++;
+        }
+
+        $jornadas = $count - 1;
+        $out = [];
+        $matchNumber = 0;
+        for ($j = 0; $j < $jornadas; $j++) {
+            $first = $teams[0];
+            for ($i = 0; $i < $count / 2; $i++) {
+                $a = $i === 0 ? $first : $teams[$i];
+                $b = $teams[$count - 1 - $i];
+                if ($a === null || $b === null) {
+                    continue; // the resting team
+                }
+                $out[] = [
+                    'round_number' => $j + 1,
+                    'match_number' => ++$matchNumber,
+                    'participant_a_id' => $a,
+                    'participant_b_id' => $b,
+                ];
+            }
+            // Rotate: keep first fixed, shift the rest.
+            $teams = [$teams[0], ...array_slice($teams, -1), ...array_slice($teams, 1, -1)];
+        }
+
+        return $out;
+    }
+
+    /**
      * Number of matches a bracket with n participants will have (n - 1).
      */
     public static function totalMatches(int $n): int

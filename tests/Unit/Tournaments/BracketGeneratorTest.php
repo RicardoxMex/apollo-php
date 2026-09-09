@@ -103,4 +103,53 @@ class BracketGeneratorTest extends TestCase
         $this->assertSame(4, BracketGenerator::totalMatches(5));
         $this->assertSame(7, BracketGenerator::totalMatches(8));
     }
+
+    public function test_round_robin_4_teams_all_pairs_once(): void
+    {
+        $fixtures = BracketGenerator::generateRoundRobin([1, 2, 3, 4]);
+
+        // 3 jornadas × 2 partidos = 6 (each pair plays once)
+        $this->assertCount(6, $fixtures);
+        $jornadas = array_column($fixtures, 'round_number');
+        $this->assertSame([1, 1, 2, 2, 3, 3], $jornadas);
+        $this->assertSame([1, 2, 3, 4, 5, 6], array_column($fixtures, 'match_number'));
+
+        $pairs = [];
+        foreach ($fixtures as $m) {
+            $pair = [$m['participant_a_id'], $m['participant_b_id']];
+            sort($pair);
+            $pairs[implode('-', $pair)] = true;
+        }
+        $this->assertCount(6, $pairs, 'todas las parejas aparecen exactamente una vez');
+        $this->assertArrayHasKey('1-2', $pairs);
+        $this->assertArrayHasKey('3-4', $pairs);
+    }
+
+    public function test_round_robin_3_teams_one_rests_per_jornada(): void
+    {
+        $fixtures = BracketGenerator::generateRoundRobin([1, 2, 3]);
+
+        // 3 jornadas × 1 partido (the third team rests)
+        $this->assertCount(3, $fixtures);
+        $this->assertSame([1, 2, 3], array_column($fixtures, 'round_number'));
+
+        $played = [];
+        foreach ($fixtures as $m) {
+            $this->assertNotNull($m['participant_a_id']);
+            $this->assertNotNull($m['participant_b_id']);
+            $pair = [$m['participant_a_id'], $m['participant_b_id']];
+            sort($pair);
+            $played[implode('-', $pair)] = true;
+        }
+        $this->assertCount(3, $played);
+        $this->assertArrayHasKey('1-2', $played);
+        $this->assertArrayHasKey('1-3', $played);
+        $this->assertArrayHasKey('2-3', $played);
+    }
+
+    public function test_round_robin_less_than_2_is_empty(): void
+    {
+        $this->assertSame([], BracketGenerator::generateRoundRobin([]));
+        $this->assertSame([], BracketGenerator::generateRoundRobin([5]));
+    }
 }

@@ -182,6 +182,69 @@ class TournamentService
     }
 
     /**
+     * Copies the tournament as a new draft: title " (copia)", no participants,
+     * draw, matches or registrations; prizes and stats are copied.
+     */
+    public function duplicate(int $actorId, int $id, ?Request $request = null): ?array
+    {
+        $tournament = $this->tournaments->find($id);
+        if (!$tournament || $tournament['deleted_at'] !== null) {
+            return null;
+        }
+        $this->ensureOrganizer($actorId, $tournament);
+
+        $pdo = DatabaseManager::getConnection();
+        $pdo->beginTransaction();
+        try {
+            $newId = $this->tournaments->create([
+                'organizer_id' => $actorId,
+                'season_id' => $tournament['season_id'],
+                'title' => $tournament['title'] . ' (copia)',
+                'sport' => $tournament['sport'],
+                'description' => $tournament['description'],
+                'location' => $tournament['location'],
+                'is_online' => $tournament['is_online'],
+                'image' => $tournament['image'],
+                'status' => 'draft',
+                'format' => $tournament['format'],
+                'max_participants' => $tournament['max_participants'],
+                'is_individual' => $tournament['is_individual'],
+                'start_date' => $tournament['start_date'],
+                'end_date' => $tournament['end_date'],
+                'registration_deadline' => $tournament['registration_deadline'],
+                'registration_fee' => $tournament['registration_fee'],
+                'currency' => $tournament['currency'],
+                'visibility' => $tournament['visibility'],
+                'minimum_age' => $tournament['minimum_age'],
+                'rules' => $tournament['rules'],
+                'max_substitutes' => $tournament['max_substitutes'],
+            ]);
+
+            $stmt = $pdo->prepare('SELECT * FROM tournament_prizes WHERE tournament_id = ? ORDER BY position ASC');
+            $stmt->execute([$id]);
+            $prizeStmt = $pdo->prepare('INSERT INTO tournament_prizes (tournament_id, position, amount, currency, label) VALUES (?, ?, ?, ?, ?)');
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $prize) {
+                $prizeStmt->execute([$newId, $prize['position'], $prize['amount'], $prize['currency'], $prize['label']]);
+            }
+
+            $stmt = $pdo->prepare('SELECT * FROM tournament_stats WHERE tournament_id = ? ORDER BY id ASC');
+            $stmt->execute([$id]);
+            $statStmt = $pdo->prepare('INSERT INTO tournament_stats (tournament_id, label, type, per_player) VALUES (?, ?, ?, ?)');
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $stat) {
+                $statStmt->execute([$newId, $stat['label'], $stat['type'], $stat['per_player']]);
+            }
+
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+
+        $this->audit->record($actorId, 'tournament', (int) $newId, 'torneo:duplicar', ['from' => $id], ['title' => $tournament['title'] . ' (copia)'], $request);
+        return $this->show((int) $newId);
+    }
+
+    /**
      * Lifecycle transitions: publish (draft→open), start (open→live), finish (live→finished).
      */
     public function transition(int $actorId, int $id, string $action, ?Request $request = null): ?array

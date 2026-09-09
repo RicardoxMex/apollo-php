@@ -201,14 +201,15 @@ class TournamentController extends Controller
         }
     }
 
-    public function generateDraw($id)
+    public function generateDraw($tournamentId)
     {
         try {
             $data = $this->validate($this->body(), [
                 'type'       => 'required|in:groups,bracket,manual',
                 'num_groups' => 'nullable|integer|min:2',
+                'groups'     => 'nullable|array',
             ]);
-            $draw = $this->draws->generate($this->actorId(), (int) $id, $data, $this->request);
+            $draw = $this->draws->generate($this->actorId(), (int) $tournamentId, $data, $this->request);
             return $this->json(['success' => true, 'data' => $draw, 'message' => 'Sorteo generado']);
         } catch (ValidationException $e) {
             return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
@@ -218,6 +219,33 @@ class TournamentController extends Controller
             return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 409);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo generar el sorteo', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function clearDraw($tournamentId)
+    {
+        try {
+            $draw = $this->draws->delete($this->actorId(), (int) $tournamentId, $this->request);
+            return $this->json(['success' => true, 'data' => $draw, 'message' => 'Sorteo limpiado']);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => 'No se pudo limpiar el sorteo', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function duplicate($tournamentId)
+    {
+        try {
+            $tournament = $this->tournaments->duplicate($this->actorId(), (int) $tournamentId, $this->request);
+            if (!$tournament) {
+                return $this->json(['error' => 'Torneo no encontrado'], 404);
+            }
+            return $this->json(['success' => true, 'data' => $tournament, 'message' => 'Torneo duplicado'], 201);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => 'No se pudo duplicar el torneo', 'message' => $e->getMessage()], 500);
         }
     }
 

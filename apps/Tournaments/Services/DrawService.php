@@ -21,8 +21,10 @@ class DrawService
      * Generates (or re-generates) the tournament draw. Each generation creates a new version.
      * - type=bracket: rounds + fixtures + official matches (1:1), with byes and
      *   automatic advancement on completion.
-     * - type=groups: distribution in groups (no fixtures yet).
-     * - type=manual: only records the draw.
+     * - type=groups: distribution in groups + round-robin fixtures (jornadas)
+     *   as official matches.
+     * - type=manual: explicit group assignment ({groups:[{name?, participant_ids}]})
+     *   validated (every participant exactly once) + same fixtures.
      */
     public function generate(int $actorId, int $tournamentId, array $data, ?Request $request = null): array
     {
@@ -46,7 +48,7 @@ class DrawService
             throw new \InvalidArgumentException('Tipo de sorteo inválido: groups, bracket o manual');
         }
 
-        // Accepted participants (the seed order defines the bracket)
+        // Accepted participants (the seed order defines the bracket/groups)
         $stmt = $pdo->prepare('SELECT id FROM tournament_participants WHERE tournament_id = ? ORDER BY seed ASC, id ASC');
         $stmt->execute([$tournamentId]);
         $participantIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
@@ -67,9 +69,12 @@ class DrawService
 
             if ($type === 'bracket') {
                 $this->createBracket($pdo, $drawId, $participantIds);
-            } elseif ($type === 'groups') {
-                $numGroups = max(2, (int) ($data['num_groups'] ?? 2));
-                $this->createGroups($pdo, $drawId, BracketGenerator::assignGroups($participantIds, $numGroups));
+            } else {
+                $groups = $type === 'manual'
+                    ? $this->validateManualGroups($pdo, $tournamentId, $participantIds, $data['groups'] ?? [])
+                    : BracketGenerator::assignGroups($participantIds, max(2, (int) ($data['num_groups'] ?? 2)));
+                $this->createGroups($pdo, $drawId, $groups);
+                $this->createGroupFixtures($pdo, $tournamentId, $drawId);
             }
 
             $pdo->commit();
@@ -79,6 +84,80 @@ class DrawService
         }
 
         $this->audit->record($actorId, 'draw', $drawId, 'draw:generar', null, ['type' => $type, 'version' => $version, 'participants' => count($participantIds)], $request);
+        return $this->show($tournamentId);
+    }
+
+    /**
+     * Removes the active draw completely (fixtures, groups, matches and scores).
+     * Only in draft/paused/open; live/finished are blocked (matches may have results).
+     */
+    public function delete(int $actorId, int $tournamentId, ?Request $request = null): array
+    {
+        $pdo = $this->pdo();
+
+        $stmt = $pdo->prepare('SELECT * FROM tournaments WHERE id = ? AND deleted_at IS NULL');
+        $stmt->execute([$tournamentId]);
+        $tournament = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$tournament) {
+            throw new \RuntimeException('Torneo no encontrado', 404);
+        }
+        if ((int) $tournament['organizer_id'] !== $actorId) {
+            throw new \RuntimeException('No eres el organizador de este torneo', 403);
+        }
+        if (in_array($tournament['status'], ['live', 'finished'], true)) {
+            throw new \RuntimeException('No se puede limpiar el sorteo con el torneo en vivo o finalizado', 409);
+        }
+
+        $stmt = $pdo->prepare('SELECT id FROM draws WHERE tournament_id = ?');
+        $stmt->execute([$tournamentId]);
+        $drawIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
+
+        if ($drawIds) {
+            $in = implode(',', array_fill(0, count($drawIds), '?'));
+            $pdo->beginTransaction();
+            try {
+                // Fixtures of the draw (official matches) + their scores/stats.
+                // Los fixtures de grupos no tienen draw_match_id (NULL): se
+                // borran todos los partidos del torneo (todos provienen del draw).
+                $stmt = $pdo->prepare('SELECT id FROM matches WHERE tournament_id = ?');
+                $stmt->execute([$tournamentId]);
+                $matchIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
+                if ($matchIds) {
+                    $inM = implode(',', array_fill(0, count($matchIds), '?'));
+                    $pdo->prepare("DELETE FROM match_player_stats WHERE match_id IN ({$inM})")->execute($matchIds);
+                    $pdo->prepare("DELETE FROM match_scores WHERE match_id IN ({$inM})")->execute($matchIds);
+                    $pdo->prepare("DELETE FROM matches WHERE id IN ({$inM})")->execute($matchIds);
+                }
+
+                // Bracket structures
+                $stmt = $pdo->prepare("SELECT id FROM draw_rounds WHERE draw_id IN ({$in})");
+                $stmt->execute($drawIds);
+                $roundIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
+                if ($roundIds) {
+                    $inR = implode(',', array_fill(0, count($roundIds), '?'));
+                    $pdo->prepare("DELETE FROM draw_matches WHERE round_id IN ({$inR})")->execute($roundIds);
+                    $pdo->prepare("DELETE FROM draw_rounds WHERE id IN ({$inR})")->execute($roundIds);
+                }
+
+                // Groups
+                $stmt = $pdo->prepare("SELECT id FROM draw_groups WHERE draw_id IN ({$in})");
+                $stmt->execute($drawIds);
+                $groupIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
+                if ($groupIds) {
+                    $inG = implode(',', array_fill(0, count($groupIds), '?'));
+                    $pdo->prepare("DELETE FROM draw_group_participants WHERE group_id IN ({$inG})")->execute($groupIds);
+                    $pdo->prepare("DELETE FROM draw_groups WHERE id IN ({$inG})")->execute($groupIds);
+                }
+
+                $pdo->prepare("DELETE FROM draws WHERE id IN ({$in})")->execute($drawIds);
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                $pdo->rollBack();
+                throw $e;
+            }
+            $this->audit->record($actorId, 'draw', $tournamentId, 'draw:limpiar', null, ['draws' => $drawIds], $request);
+        }
+
         return $this->show($tournamentId);
     }
 
@@ -108,7 +187,7 @@ class DrawService
             'rounds' => [],
         ];
 
-        if ($draw['type'] === 'groups') {
+        if (in_array($draw['type'], ['groups', 'manual'], true)) {
             $stmt = $pdo->prepare('SELECT g.* FROM draw_groups g WHERE g.draw_id = ? ORDER BY g.position ASC');
             $stmt->execute([$draw['id']]);
             $groups = $stmt->fetchAll(PDO::FETCH_ASSOC);
@@ -238,6 +317,79 @@ class DrawService
             $groupId = (int) $pdo->lastInsertId();
             foreach (array_values($g['participant_ids']) as $pos => $pid) {
                 $pivotStmt->execute([$groupId, $pid, $pos + 1]);
+            }
+        }
+    }
+
+    /**
+     * Validates the explicit manual assignment: every accepted participant of the
+     * tournament appears exactly once across the provided groups.
+     *
+     * @return array{name:string, position:int, participant_ids:int[]}[]
+     */
+    private function validateManualGroups(PDO $pdo, int $tournamentId, array $participantIds, array $groups): array
+    {
+        if (empty($groups) || !is_array($groups)) {
+            throw new \InvalidArgumentException('El sorteo manual requiere la asignación de grupos');
+        }
+
+        $seen = [];
+        $normalized = [];
+        foreach (array_values($groups) as $i => $g) {
+            $ids = array_map('intval', $g['participant_ids'] ?? []);
+            $ids = array_values(array_filter($ids, fn($id) => $id > 0));
+            foreach ($ids as $id) {
+                if (isset($seen[$id])) {
+                    throw new \RuntimeException("El participante {$id} aparece en más de un grupo", 409);
+                }
+                $seen[$id] = true;
+            }
+            $normalized[] = [
+                'name' => trim($g['name'] ?? '') !== '' ? trim($g['name']) : 'Grupo ' . chr(65 + $i),
+                'position' => $i + 1,
+                'participant_ids' => $ids,
+            ];
+        }
+
+        foreach ($participantIds as $id) {
+            if (!isset($seen[$id])) {
+                throw new \RuntimeException("El participante {$id} no fue asignado a ningún grupo", 409);
+            }
+        }
+
+        return array_filter($normalized, fn($g) => count($g['participant_ids']) > 0);
+    }
+
+    /**
+     * Round-robin fixtures per group as official matches (jornadas).
+     * `round_number` is the jornada (per group, from 1); `match_number` is global.
+     */
+    private function createGroupFixtures(PDO $pdo, int $tournamentId, int $drawId): void
+    {
+        $stmt = $pdo->prepare('SELECT g.id FROM draw_groups g WHERE g.draw_id = ? ORDER BY g.position ASC');
+        $stmt->execute([$drawId]);
+        $groupIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
+
+        $insert = $pdo->prepare(
+            "INSERT INTO matches (tournament_id, draw_match_id, round_number, match_number, participant_a_id, participant_b_id, status, created_at, updated_at)
+             VALUES (?, NULL, ?, ?, ?, ?, 'pending', ?, ?)"
+        );
+
+        foreach ($groupIds as $groupId) {
+            $stmt = $pdo->prepare('SELECT tournament_participant_id FROM draw_group_participants WHERE group_id = ? ORDER BY position ASC');
+            $stmt->execute([$groupId]);
+            $participantIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'tournament_participant_id'));
+
+            foreach (BracketGenerator::generateRoundRobin($participantIds) as $m) {
+                $insert->execute([
+                    $tournamentId,
+                    $m['round_number'],
+                    $m['match_number'],
+                    $m['participant_a_id'],
+                    $m['participant_b_id'],
+                    date('Y-m-d H:i:s'),
+                    date('Y-m-d H:i:s'),
+                ]);
             }
         }
     }

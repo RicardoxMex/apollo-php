@@ -40,7 +40,9 @@ $router->group(['middleware' => ['auth', 'cors']], function ($router) {
     $router->post('/tournaments/{id}/publish', [TournamentController::class, 'publish'])->where(['id' => '\d+'])->name('tournaments.publish');
     $router->post('/tournaments/{id}/start', [TournamentController::class, 'start'])->where(['id' => '\d+'])->name('tournaments.start');
     $router->post('/tournaments/{id}/finish', [TournamentController::class, 'finish'])->where(['id' => '\d+'])->name('tournaments.finish');
-    $router->post('/tournaments/{id}/draw', [TournamentController::class, 'generateDraw'])->where(['id' => '\d+'])->name('tournaments.draw.generate');
+    $router->post('/tournaments/{tournamentId}/draw', [TournamentController::class, 'generateDraw'])->where(['tournamentId' => '\d+'])->name('tournaments.draw.generate');
+    $router->delete('/tournaments/{tournamentId}/draw', [TournamentController::class, 'clearDraw'])->where(['tournamentId' => '\d+'])->name('tournaments.draw.delete');
+    $router->post('/tournaments/{tournamentId}/duplicate', [TournamentController::class, 'duplicate'])->where(['tournamentId' => '\d+'])->name('tournaments.duplicate');
 
     // Registration requests (anyone can apply; only the organizer decides)
     $router->get('/tournaments/{tournamentId}/registrations', [TournamentController::class, 'registrations'])->where(['tournamentId' => '\d+'])->name('tournaments.registrations');

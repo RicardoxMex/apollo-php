@@ -213,4 +213,155 @@ class TournamentsSqliteFlowTest extends TestCase
         $stmt = self::$pdo->query('SELECT COUNT(*) FROM audit_logs');
         $this->assertGreaterThan(10, (int) $stmt->fetchColumn());
     }
+
+    private function createTeams(int $organizer, array $names): array
+    {
+        return array_map(fn($name) => (int) self::$teams->create($organizer, ['name' => $name])['id'], $names);
+    }
+
+    private function applyAndAccept(int $organizer, int $tournamentId, array $teamIds): void
+    {
+        foreach ($teamIds as $teamId) {
+            $registration = self::$registrations->apply($organizer, $tournamentId, ['team_id' => $teamId]);
+            self::$registrations->decide($organizer, $tournamentId, (int) $registration['id'], ['action' => 'accepted']);
+        }
+    }
+
+    public function test_groups_draw_generates_jornadas_fixtures(): void
+    {
+        $organizer = $this->createUser('org-grupos', 'grupos@test.local');
+        $teams = $this->createTeams($organizer, ['Grupo A1', 'Grupo A2', 'Grupo B1', 'Grupo B2']);
+
+        $tournament = self::$tournaments->create($organizer, [
+            'title' => 'Fase de grupos', 'format' => 'grupos', 'max_participants' => 8,
+        ]);
+        $this->applyAndAccept($organizer, (int) $tournament['id'], $teams);
+
+        $draw = self::$draws->generate($organizer, (int) $tournament['id'], ['type' => 'groups', 'num_groups' => 2]);
+
+        // 2 grupos de 2 equipos → 1 jornada por grupo → 2 partidos oficiales
+        $this->assertCount(2, $draw['groups']);
+        $matches = self::$matches->list((int) $tournament['id']);
+        $this->assertCount(2, $matches);
+        foreach ($matches as $m) {
+            $this->assertSame(1, (int) $m['round_number']);
+            $this->assertNotNull($m['participant_a_id']);
+            $this->assertNotNull($m['participant_b_id']);
+        }
+
+        // Each pair of the same group plays (no cross-group pairings)
+        $pairs = [];
+        foreach ($matches as $m) {
+            $pair = [(int) $m['participant_a_id'], (int) $m['participant_b_id']];
+            sort($pair);
+            $pairs[] = implode('-', $pair);
+        }
+        $byGroup = [];
+        foreach ($draw['groups'] as $g) {
+            $ids = array_map(fn($p) => (int) $p['tournament_participant_id'], $g['participants']);
+            sort($ids);
+            $byGroup[] = implode('-', $ids);
+        }
+        $this->assertCount(2, $pairs);
+        $this->assertContains($pairs[0], $byGroup);
+        $this->assertContains($pairs[1], $byGroup);
+    }
+
+    public function test_manual_draw_validates_and_persists_groups(): void
+    {
+        $organizer = $this->createUser('org-manual', 'manual@test.local');
+        $teams = $this->createTeams($organizer, ['M1', 'M2', 'M3', 'M4']);
+
+        $tournament = self::$tournaments->create($organizer, [
+            'title' => 'Manual', 'format' => 'grupos', 'max_participants' => 8,
+        ]);
+        $this->applyAndAccept($organizer, (int) $tournament['id'], $teams);
+
+        $participants = self::$tournaments->participants((int) $tournament['id']);
+        $ids = array_map(fn($p) => (int) $p['id'], $participants);
+
+        // Unassigned participant → 409
+        $this->expectException(\RuntimeException::class);
+        self::$draws->generate($organizer, (int) $tournament['id'], [
+            'type' => 'manual',
+            'groups' => [
+                ['name' => 'Grupo A', 'participant_ids' => [$ids[0], $ids[1]]],
+                ['name' => 'Grupo B', 'participant_ids' => [$ids[2]]],
+            ],
+        ]);
+    }
+
+    public function test_manual_draw_persists_groups_and_fixtures(): void
+    {
+        $organizer = $this->createUser('org-manual2', 'manual2@test.local');
+        $teams = $this->createTeams($organizer, ['X1', 'X2', 'Y1', 'Y2']);
+
+        $tournament = self::$tournaments->create($organizer, [
+            'title' => 'Manual OK', 'format' => 'grupos', 'max_participants' => 8,
+        ]);
+        $this->applyAndAccept($organizer, (int) $tournament['id'], $teams);
+
+        $participants = self::$tournaments->participants((int) $tournament['id']);
+        $ids = array_map(fn($p) => (int) $p['id'], $participants);
+
+        $draw = self::$draws->generate($organizer, (int) $tournament['id'], [
+            'type' => 'manual',
+            'groups' => [
+                ['name' => 'Grupo A', 'participant_ids' => [$ids[0], $ids[1]]],
+                ['name' => 'Grupo B', 'participant_ids' => [$ids[2], $ids[3]]],
+            ],
+        ]);
+
+        $this->assertSame('manual', $draw['draw']['type']);
+        $this->assertCount(2, $draw['groups']);
+        $this->assertSame('Grupo A', $draw['groups'][0]['name']);
+        $this->assertCount(2, self::$matches->list((int) $tournament['id']));
+    }
+
+    public function test_clear_draw_removes_fixtures_and_groups(): void
+    {
+        $organizer = $this->createUser('org-clear', 'clear@test.local');
+        $teams = $this->createTeams($organizer, ['C1', 'C2', 'C3', 'C4']);
+
+        $tournament = self::$tournaments->create($organizer, [
+            'title' => 'Limpiar', 'format' => 'grupos', 'max_participants' => 8,
+        ]);
+        $this->applyAndAccept($organizer, (int) $tournament['id'], $teams);
+        self::$draws->generate($organizer, (int) $tournament['id'], ['type' => 'groups', 'num_groups' => 2]);
+
+        $this->assertCount(2, self::$matches->list((int) $tournament['id']));
+        $cleared = self::$draws->delete($organizer, (int) $tournament['id']);
+
+        $this->assertNull($cleared['draw']);
+        $this->assertSame([], self::$matches->list((int) $tournament['id']));
+        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM draws WHERE tournament_id = ?');
+        $stmt->execute([(int) $tournament['id']]);
+        $this->assertSame(0, (int) $stmt->fetchColumn());
+        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM draw_groups g JOIN draws d ON d.id = g.draw_id WHERE d.tournament_id = ?');
+        $stmt->execute([(int) $tournament['id']]);
+        $this->assertSame(0, (int) $stmt->fetchColumn());
+    }
+
+    public function test_duplicate_copies_tournament_without_draw(): void
+    {
+        $organizer = $this->createUser('org-dupe', 'dupe@test.local');
+        $teams = $this->createTeams($organizer, ['D1', 'D2']);
+
+        $tournament = self::$tournaments->create($organizer, [
+            'title' => 'Original', 'format' => 'eliminacion-directa', 'max_participants' => 8,
+            'stats' => [['label' => 'Goles', 'type' => 'number']],
+        ]);
+        $this->applyAndAccept($organizer, (int) $tournament['id'], $teams);
+        self::$draws->generate($organizer, (int) $tournament['id'], ['type' => 'bracket']);
+
+        $copy = self::$tournaments->duplicate($organizer, (int) $tournament['id']);
+
+        $this->assertNotSame((int) $tournament['id'], (int) $copy['id']);
+        $this->assertSame('Original (copia)', $copy['title']);
+        $this->assertSame('draft', $copy['status']);
+        $this->assertFalse((bool) $copy['tiene_draw']);
+        $this->assertCount(1, $copy['stats']);
+        $this->assertSame('Goles', $copy['stats'][0]['label']);
+        $this->assertSame([], self::$tournaments->participants((int) $copy['id']));
+    }
 }
