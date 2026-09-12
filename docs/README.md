@@ -12,8 +12,9 @@ Bienvenido a la documentación oficial de Apollo Framework, un mini-framework PH
 - [**Estructura de Apps**](app-structure.md) - Cómo se compone una app y su `app.json`
 - [**Sistema de Autenticación**](authentication-system.md) - Auth JWT, roles y permisos
 - [**Validación de Datos**](validation.md) - Motor de validación del core (`core/Validation`)
+- [**WebSockets (Workerman)**](websockets.md) - Notificaciones en tiempo real, autenticación JWT, SDK JS y guía de integración REST (en el **core** del framework)
+- [**Módulo Realtime**](realtime.md) - Resumen del módulo de tiempo real: EventBus, canales, NotificationService (en el **core**)
 - [**Módulo Uploads**](uploads.md) - Subida y descarga de archivos (opcional)
-- [**Módulo Realtime**](realtime.md) - WebSockets, canales, notificaciones (opcional)
 
 ### Próximamente
 - Creación de APIs REST (paso a paso)
@@ -53,14 +54,23 @@ php apollo make:service ProductService --app=products
 php apollo make:repository ProductRepository --app=products
 
 # Módulo realtime (opcional)
-php apollo realtime:test       # health check
-php apollo realtime:start      # servidor WebSocket (requiere extension=openswoole)
+php apollo realtime:test       # health check (PHP, Workerman, Redis, BD, secret)
+php apollo realtime:start      # servidor WebSocket (Workerman; sin extensión nativa)
+# o: composer websocket
 
 # Generar reporte del sistema
 php apollo system:report
 
+# Base de datos
+php apollo db:setup        # drop de todas las tablas + correr migraciones (migrate:fresh)
+php apollo db:seed         # correr todos los seeders de database/seeds
+php apollo db:refresh      # db:setup + db:seed (migrate:fresh --seed)
+
 # Ejecutar self-check del framework (sin DB)
 php apollo test
+
+# Smoke test de middlewares (sin DB)
+php apollo test:middleware
 
 # Ver ayuda
 php apollo help

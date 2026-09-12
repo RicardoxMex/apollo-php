@@ -82,12 +82,19 @@ class Connection
         return array_keys($this->subscribedChannels);
     }
 
-    public function send(array $payload): void
+    public function send(array $payload): bool
     {
         $resource = $this->resource;
 
         if (is_callable($resource)) {
-            $resource($payload);
+            try {
+                $resource($payload);
+                return true;
+            } catch (\Throwable $e) {
+                return false;
+            }
         }
+
+        return false;
     }
 }

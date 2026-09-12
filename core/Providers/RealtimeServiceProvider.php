@@ -5,6 +5,7 @@ namespace Apollo\Core\Providers;
 use Apollo\Core\Container\ServiceProvider;
 use Apollo\Core\Realtime\Notifications\MySqlNotificationRepository;
 use Apollo\Core\Realtime\Notifications\NotificationManager;
+use Apollo\Core\Realtime\Notifications\NotificationService;
 use Apollo\Core\Realtime\Support\RealtimeManager;
 
 /**
@@ -16,7 +17,9 @@ class RealtimeServiceProvider extends ServiceProvider
     {
         $this->container->singleton(RealtimeManager::class, function ($app) {
             return new RealtimeManager(
-                config('realtime', [])
+                config('realtime', []),
+                null,
+                false  // app-side: el proceso web no comparte memoria con el servidor WebSocket
             );
         });
 
@@ -34,5 +37,16 @@ class RealtimeServiceProvider extends ServiceProvider
 
         // Alias 'realtime.notifications' → manager
         $this->container->alias(NotificationManager::class, 'realtime.notifications');
+
+        // NotificationService — API de alto nivel sendToUser (persiste; el WS server hace polling).
+        $this->container->singleton(NotificationService::class, function ($app) {
+            return new NotificationService(
+                config('realtime.notifications.database', true)
+                    ? new MySqlNotificationRepository()
+                    : $app->make(\Apollo\Core\Realtime\Contracts\NotificationRepository::class)
+            );
+        });
+
+        $this->container->alias(NotificationService::class, 'realtime.notification_service');
     }
 }

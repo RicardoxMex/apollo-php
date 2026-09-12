@@ -74,6 +74,40 @@ class RealtimeConfig
         return $this->config['auth']['authorize'] ?? null;
     }
 
+    public function enabled(): bool
+    {
+        return (bool) ($this->config['enabled'] ?? true);
+    }
+
+    public function publicUrl(): ?string
+    {
+        $url = $this->config['public_url'] ?? null;
+        return ($url === '' || $url === null) ? null : (string) $url;
+    }
+
+    public function pollInterval(): int
+    {
+        $interval = (int) ($this->config['poll_interval'] ?? 1);
+        return $interval < 1 ? 1 : $interval;
+    }
+
+    public function sslEnabled(): bool
+    {
+        return (bool) ($this->config['ssl']['enabled'] ?? false);
+    }
+
+    public function sslLocalCert(): ?string
+    {
+        $path = $this->config['ssl']['local_cert'] ?? null;
+        return ($path === '' || $path === null) ? null : (string) $path;
+    }
+
+    public function sslLocalKey(): ?string
+    {
+        $path = $this->config['ssl']['local_key'] ?? null;
+        return ($path === '' || $path === null) ? null : (string) $path;
+    }
+
     public function all(): array
     {
         return $this->config;

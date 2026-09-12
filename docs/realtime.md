@@ -1,71 +1,145 @@
 # Módulo Realtime / WebSockets / Notificaciones
 
-Módulo **opcional** del framework (inspirado en Laravel Reverb/Pusher):
+El módulo de **tiempo real** de Apollo vive en el **core** (`core/Realtime/`): no es una app opcional, es parte del framework. Provee:
 
-- WebSockets vía **OpenSwoole** (requiere la extensión; si no está, `realtime:start` da error claro).
-- **Redis opcional**: `REALTIME_DRIVER=auto|redis|local` con health check automático (nunca se asume instalado).
-- Canales públicos, **privados** (ticket HMAC, nunca confiar en el cliente) y **presence** (miembros en memoria).
-- Notificaciones desacopladas: canales `database` (persistencia MySQL/SQLite, migración 009) y `realtime`; futuras (email/push/webhook) sin tocar el núcleo.
-- API simple: `Realtime::broadcast(...)`, `Realtime::to(...)->emit(...)`, `Notification::send(...)`.
-- SDK JS en `public/js/realtime.js` (reconexión con backoff automática + heartbeat).
-- REST opcional: app `apps/Realtime` (no registrada por defecto).
+- **Servidor WebSocket** sobre Workerman (paquete Composer, sin extensión PHP nativa; compatible con Windows y Linux).
+- **Abstracción `EventBus`** (`local` en proceso, `redis` para multi-instancia) y canales `public`/`private` (ticket HMAC) / `presence`.
+- **`NotificationService::sendToUser()`** — API de alto nivel para crear notificaciones (persiste en la tabla `notifications`, migración 009; el servidor las entrega vía polling de BD a los clientes WebSocket conectados).
+- **CLI** `realtime:{start,stop,restart,status,test}` y scripts `composer websocket*`.
+- **SDK JS** en `public/js/realtime.js` (reconexión con backoff + heartbeat + API top-level `on/emit/off` + token JWT en handshake).
+
+> **¿Cómo expongo una API REST de notificaciones para mi proyecto?** El framework NO incluye una app REST de notificaciones pre-registrada (a diferencia de `apps/ApolloAuth` o `apps/Users`). El módulo core provee la lógica (`NotificationService`, `NotificationRepository`, `ChannelAuthenticator`); tú construyes los endpoints HTTP en **tu propia app** (ver [`docs/websockets.md` §13 — Guía de integración REST](websockets.md#13-guía-de-integración-rest-de-notificaciones) y el ejemplo completo). Esto mantiene el core reusable y evita acoplar el framework a rutas concretas.
+
+---
+
+## Componentes del core
+
+```
+core/Realtime/
+├── Auth/
+│   ├── ChannelAuthenticator.php       (HMAC para canales private/presence)
+│   └── ConnectionAuthenticator.php    (JWT en handshake WS)
+├── Bus/
+│   ├── LocalEventBus.php              (in-memory)
+│   └── RedisEventBus.php              (Pub/Sub multi-instancia)
+├── Channels/
+│   ├── ChannelManager.php
+│   ├── Channel.php / PublicChannel.php / PrivateChannel.php / PresenceChannel.php
+├── Connections/
+│   ├── Connection.php
+│   └── ConnectionManager.php          (+sendToUser, +sweep, +getUserIds)
+├── Contracts/
+│   ├── EventBus.php / NotificationChannel.php / NotificationRepository.php / RealtimeEvent.php / RedisConnection.php
+├── Events/
+│   ├── Broadcaster.php                (Realtime::to()->emit())
+│   └── EventDispatcher.php
+├── Notifications/
+│   ├── Notification.php               (clase abstracta para notificaciones tipadas)
+│   ├── NotificationManager.php        (despacha por canales database/realtime)
+│   ├── NotificationService.php        (API de alto nivel sendToUser — recomendado)
+│   ├── MySqlNotificationRepository.php
+│   └── Channels/
+│       ├── DatabaseChannel.php
+│       └── RealtimeChannel.php
+├── Support/
+│   ├── RealtimeConfig.php
+│   ├── RealtimeManager.php            (mode-aware: app vs server)
+│   └── RedisClient.php                (cliente RESP nativo)
+├── WebSocket/
+│   ├── WebSocketServer.php            (Workerman; un solo Worker websocket://)
+│   ├── MessageHandler.php             (subscribe/unsubscribe/authenticate/ping)
+│   └── Heartbeat.php
+├── Realtime.php                       (fachada estática: Realtime::broadcast(), Realtime::to()->emit())
+└── (sin app REST — se integra desde tu app)
+```
 
 ## Configuración (`config/realtime.php`, env)
 
+Las variables se resuelven con prioridad `WEBSOCKET_*` y fallback a `REALTIME_*` (legacy).
+
 ```env
-REALTIME_DRIVER=auto            # auto | redis | local
-REALTIME_HOST=0.0.0.0
-REALTIME_PORT=8080
-REALTIME_HEARTBEAT_INTERVAL=30
-REALTIME_CONNECTION_TIMEOUT=60
-REALTIME_APP_ID=apollo
-REALTIME_APP_KEY=app_apollo
-REALTIME_APP_SECRET=            # obligatorio para canales privados
+WEBSOCKET_ENABLED=true
+WEBSOCKET_HOST=127.0.0.1
+WEBSOCKET_PORT=8080
+WEBSOCKET_MAX_CONNECTIONS=10000
+WEBSOCKET_MAX_MESSAGE_SIZE=8192
+WEBSOCKET_POLL_INTERVAL=1
+WEBSOCKET_HEARTBEAT_INTERVAL=30
+WEBSOCKET_CONNECTION_TIMEOUT=60
+WEBSOCKET_APP_ID=apollo
+WEBSOCKET_APP_KEY=app_apollo
+WEBSOCKET_APP_SECRET=                # obligatorio para canales privados y Bearer en REST
+WEBSOCKET_SSL_ENABLED=false
+WEBSOCKET_SSL_LOCAL_CERT=
+WEBSOCKET_SSL_LOCAL_PKEY=
+
 REDIS_HOST=127.0.0.1
 REDIS_PORT=6379
 ```
 
-## Uso básico
+## Uso básico (PHP)
 
 ```php
-// Backend — publicar un evento
+// Fachada (canales, in-process)
 Realtime::broadcast('orders', 'order.created', ['id' => 123]);
+Realtime::to('orders')->emit('order.updated', ['id' => 2]);
 
-// o fluido
-Realtime::to('orders')->emit('order.created', ['id' => 123]);
+// NotificationService (recomendado para notificaciones a usuarios)
+$service = app(\Apollo\Core\Realtime\Notifications\NotificationService::class);
+$record = $service->sendToUser(
+    7,                              // user_id destinatario
+    'ticket.created',
+    [
+        'title' => 'Nuevo ticket',
+        'message' => 'Se creó el ticket #123',
+        'data' => ['ticket_id' => 123],
+    ]
+);
 
-// Notificación (persistida + realtime)
+// Notificación por clase (estilo DRF/Laravel)
 \Apollo\Core\Realtime\Notifications\Notification::send($userId, new OrderShipped());
 ```
 
+Persiste en `notifications` (migración 009). El servidor Workerman hace polling de la tabla y entrega vía WebSocket a todas las conexiones del `user_id`. Si el servidor está caído, la notificación queda persistida y se entrega al reconectar (high-water-mark por usuario en `runtime/realtime-delivery.json`).
+
+## SDK JS (`public/js/realtime.js`)
+
 ```javascript
-// Frontend
 const realtime = new RealtimeClient({
     url: 'ws://localhost:8080',
-    key: 'app_apollo',
-    auth: (channel) => fetch('/v1/realtime/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ channel }),
-        credentials: 'include',
-    }).then((r) => r.json()),
+    token: jwt,                          // autentica la conexión
+    auth: (channel) => fetch('/api/realtime/auth', { /* … */ }).then(r => r.json()),
 });
 
+// API top-level (spec §9)
+realtime.on('notification', (data) => console.log('🔔', data));
+
+// API channel-based (canales public/private/presence)
 realtime.channel('orders').listen('order.created', (data) => console.log(data));
-realtime.presence('presence-chat.1').on('member.joined', (member) => console.log('entró', member));
+realtime.presence('presence-chat.1').on('member.joined', (m) => console.log('entró', m));
 ```
 
 ## CLI
 
 ```bash
-php apollo realtime:start      # requiere extension=openswoole
-php apollo realtime:stop
-php apollo realtime:restart
-php apollo realtime:status
-php apollo realtime:test       # health check (PHP/OpenSwoole/Redis/MySQL/driver)
+composer websocket                # php apollo realtime:start (foreground)
+composer websocket:start-d        # daemon (Linux)
+composer websocket:stop
+composer websocket:restart
+composer websocket:status
+composer websocket:test           # health check (PHP, Workerman, Redis, BD, secret)
 ```
 
-## Drivers
+Standalone (sin apollo CLI):
+
+```bash
+php websocket/server.php start
+php websocket/server.php start -d    # Linux
+php websocket/server.php stop
+php websocket/server.php status
+```
+
+## Drivers del bus
 
 | Driver | Cuándo | Comunicación |
 |---|---|---|
@@ -77,26 +151,22 @@ php apollo realtime:test       # health check (PHP/OpenSwoole/Redis/MySQL/driver
 
 ## Activación en un proyecto
 
-1. Configurar env (`app_secret` al menos para privados).
-2. Correr la migración de notificaciones: `php setup_database.php` (incluye 009).
-3. Servidor: `php apollo realtime:start` (requiere OpenSwoole).
-4. REST API opcional: añadir `'Realtime'` a `config/apps.php` (endpoints `/v1/events`, `/v1/realtime/auth`, `/v1/notifications`…).
+1. `composer install` (instala `workerman/workerman`).
+2. Configurar env (`app_secret` al menos para canales privados).
+3. Correr la migración de notificaciones: `php setup_database.php` (incluye 009).
+4. Servidor: `php apollo realtime:start` (Workerman; sin extensión nativa).
+5. **REST**: crea los endpoints en **tu propia app** siguiendo la guía de [`docs/websockets.md` §13](websockets.md#13-guía-de-integración-rest-de-notificaciones).
 
-## Instalar OpenSwoole (extensión, no paquete Composer)
+## Producción (WSS + Nginx)
 
-OpenSwoole es una **extensión de PHP**, no un paquete Composer instalable vía `composer require`
-(el paquete `openswoole/openswoole` en Packagist son stubs/IDE, no la extensión).
-
-- **Linux/macOS:** `pecl install openswoole` (o docker con imágenes `openswoole/swoole`).
-- **Windows: NO soportado** — `realtime:start` dará el error claro
-  "Realtime server requires the OpenSwoole PHP extension." y `realtime:test` mostrará OpenSwoole ✗.
-  Puedes desarrollar con el driver **local** (canales/eventos/notificaciones testeados sin servidor).
-- Composer solo puede *sugerirlo*: `composer show -s` lo lista en `suggest` (`ext-openswoole`).
-  El framework lo detecta en runtime (`extension_loaded('openswoole')`) — nunca asume instalado.
+Nginx hace terminación TLS y proxy a Workerman en `127.0.0.1:8080`. Cliente: `wss://midominio.com/ws`. Ver [`docs/websockets.md` §11 — Nginx + WSS](websockets.md#11-nginx--wss) para el bloque Nginx completo y el systemd unit.
 
 ## Limitaciones documentadas
 
-- El servidor WebSocket requiere la extensión `openswoole`.
-- `local` NO comunica entre instancias del servidor (una sola).
-- Presence se mantiene en memoria (presencia distribuida con Redis en fases posteriores).
-- MySQL solo persiste notificaciones; nunca es broker de eventos.
+- El servidor WebSocket es **single-process en Windows** (Workerman no soporta multi-Worker por archivo en Windows); `-d` daemon no funciona en Windows.
+- En `local` driver, la entrega cross-process se hace por **polling server-side** de la tabla `notifications` (latencia = `WEBSOCKET_POLL_INTERVAL`, default 1s). Multi-instancia con Redis (true multi-process) es el paso 2 (requeriría `workerman/channel`).
+- Presence se mantiene en memoria del proceso (presencia distribuida con Redis en fases posteriores).
+- MySQL/SQLite solo persiste notificaciones; nunca es broker de eventos (el broker es Redis cuando se activa).
+- WSS directo (sin Nginx) requiere `WEBSOCKET_SSL_ENABLED=true` + cert + key.
+
+Para la guía completa (instalación, autenticación, protocolo, reconexión, troubleshooting, **guía de integración REST**), ver **`docs/websockets.md`**.
