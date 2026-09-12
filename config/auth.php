@@ -23,7 +23,7 @@ return [
         'algorithm' => env('JWT_ALGORITHM', 'HS256'),
         'issuer' => env('JWT_ISSUER', 'apollo-api.local'),
         'audience' => env('JWT_AUDIENCE', 'apollo-client'),
-        'expiry' => (int) env('JWT_EXPIRY', 3600), // 1 hora
+        'expiry' => (int) env('JWT_EXPIRY', 86400), // 24 horas (sesión de trabajo larga)
         'refresh_ttl' => (int) env('JWT_REFRESH_TTL', 20160), // 2 semanas
     ],
 

@@ -15,6 +15,7 @@ class TournamentController extends Controller
         'title'                 => 'required|string|min:3|max:120',
         'format'                => 'required|in:eliminacion-directa,doble-eliminacion,round-robin,grupos,liga',
         'max_participants'      => 'required|integer|min:2',
+        'players_per_team'      => 'nullable|integer|min:1',
         'sport'                 => 'nullable|string|max:60',
         'description'           => 'nullable|string|max:2000',
         'location'              => 'nullable|string|max:255',

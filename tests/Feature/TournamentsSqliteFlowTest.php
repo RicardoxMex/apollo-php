@@ -91,12 +91,14 @@ class TournamentsSqliteFlowTest extends TestCase
             'sport' => 'Fútbol',
             'format' => 'eliminacion-directa',
             'max_participants' => 8,
+            'players_per_team' => 5,
             'visibility' => 'privado',
             'stats' => [['label' => 'Goles', 'type' => 'number']],
         ]);
         $this->assertSame('draft', $tournament['status']);
         $this->assertSame('privado', $tournament['visibility']);
         $this->assertSame('eliminacion-directa', $tournament['format']);
+        $this->assertSame(5, (int) $tournament['players_per_team']);
         $this->assertCount(1, $tournament['stats']);
         $tournamentId = (int) $tournament['id'];
         $statId = (int) $tournament['stats'][0]['id'];

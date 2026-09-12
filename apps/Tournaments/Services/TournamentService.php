@@ -66,7 +66,7 @@ class TournamentService
         return $tournament;
     }
 
-    /**
+/**
      * Creates the tournament (draft) with optional prizes and stats.
      */
     public function create(int $actorId, array $data, ?Request $request = null): ?array
@@ -76,13 +76,13 @@ class TournamentService
         $maxParticipants = (int) ($data['max_participants'] ?? 0);
 
         if ($title === '') {
-            throw new \InvalidArgumentException('El título del torneo es obligatorio');
+            throw new \InvalidArgumentException('El t�tulo del torneo es obligatorio');
         }
         if ($format === null) {
-            throw new \InvalidArgumentException('Formato inválido');
+            throw new \InvalidArgumentException('Formato inv�lido');
         }
         if ($maxParticipants < 2) {
-            throw new \InvalidArgumentException('El cupo máximo debe ser al menos 2');
+            throw new \InvalidArgumentException('El cupo m�ximo debe ser al menos 2');
         }
 
         $pdo = DatabaseManager::getConnection();
@@ -92,6 +92,7 @@ class TournamentService
                 'organizer_id' => $actorId,
                 'season_id' => !empty($data['season_id']) ? (int) $data['season_id'] : null,
                 'title' => $title,
+                'slug' => $this->slugUnico($pdo, $title),
                 'sport' => trim($data['sport'] ?? ''),
                 'description' => $data['description'] ?? null,
                 'location' => $data['location'] ?? null,
@@ -110,6 +111,7 @@ class TournamentService
                 'minimum_age' => !empty($data['minimum_age']) ? (int) $data['minimum_age'] : null,
                 'rules' => $data['rules'] ?? null,
                 'max_substitutes' => (int) ($data['max_substitutes'] ?? 0),
+                'players_per_team' => !empty($data['players_per_team']) ? (int) $data['players_per_team'] : null,
             ]);
 
             if (!empty($data['prizes']) && is_array($data['prizes'])) {
@@ -152,6 +154,7 @@ class TournamentService
      */
     public function update(int $actorId, int $id, array $data, ?Request $request = null): ?array
     {
+        $pdo = DatabaseManager::getConnection();
         $tournament = $this->tournaments->find($id);
         if (!$tournament || $tournament['deleted_at'] !== null) {
             return null;
@@ -161,6 +164,11 @@ class TournamentService
         $editable = TournamentRules::filterEditableFields($tournament['status'], $data);
         if ($editable === [] && $data !== []) {
             throw new \RuntimeException('Este torneo no admite edición en su estado actual');
+        }
+
+        // Si cambia el título, el slug se regenera (único contra el resto).
+        if (array_key_exists('title', $editable)) {
+            $editable['slug'] = $this->slugUnico($pdo, (string) $editable['title'], $id);
         }
 
         $this->tournaments->update($id, $editable);
@@ -200,6 +208,7 @@ class TournamentService
                 'organizer_id' => $actorId,
                 'season_id' => $tournament['season_id'],
                 'title' => $tournament['title'] . ' (copia)',
+                'slug' => $this->slugUnico($pdo, $tournament['title'] . ' (copia)'),
                 'sport' => $tournament['sport'],
                 'description' => $tournament['description'],
                 'location' => $tournament['location'],
@@ -218,6 +227,7 @@ class TournamentService
                 'minimum_age' => $tournament['minimum_age'],
                 'rules' => $tournament['rules'],
                 'max_substitutes' => $tournament['max_substitutes'],
+                'players_per_team' => $tournament['players_per_team'],
             ]);
 
             $stmt = $pdo->prepare('SELECT * FROM tournament_prizes WHERE tournament_id = ? ORDER BY position ASC');
@@ -318,6 +328,29 @@ class TournamentService
         $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM tournament_registrations WHERE tournament_id = ? AND status = 'accepted'");
         $stmt->execute([$tournamentId]);
         return (int) $stmt->fetch(PDO::FETCH_ASSOC)['total'];
+    }
+
+    /**
+     * Slug base libre: si el título ya tiene slug (otro torneo), lo
+     * desambigua con un sufijo corto (-id si es una actualización, o un
+     * hex aleatorio de 6 chars en creación).
+     */
+    private function slugUnico(PDO $pdo, string $title, ?int $exceptId = null): string
+    {
+        $base = Slugs::from($title);
+        $stmt = $pdo->prepare('SELECT COUNT(*) FROM tournaments WHERE slug = ?' . ($exceptId !== null ? ' AND id <> ?' : ''));
+        $params = [$base];
+        if ($exceptId !== null) {
+            $params[] = $exceptId;
+        }
+        $stmt->execute($params);
+        if ((int) $stmt->fetchColumn() === 0) {
+            return $base;
+        }
+        if ($exceptId !== null) {
+            return $base . '-' . $exceptId;
+        }
+        return $base . '-' . strtolower(substr(bin2hex(random_bytes(3)), 0, 6));
     }
 
     private function hasDraw(PDO $pdo, int $tournamentId): bool

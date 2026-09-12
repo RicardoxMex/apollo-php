@@ -31,6 +31,7 @@ class Tournament extends Model
         'minimum_age',
         'rules',
         'max_substitutes',
+        'players_per_team',
     ];
 
     protected $casts = [
@@ -40,6 +41,7 @@ class Tournament extends Model
         'registration_fee' => 'float',
         'minimum_age' => 'integer',
         'max_substitutes' => 'integer',
+        'players_per_team' => 'integer',
     ];
 
     protected $dates = [

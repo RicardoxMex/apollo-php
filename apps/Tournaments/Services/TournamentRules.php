@@ -63,7 +63,8 @@ class TournamentRules
     /**
      * Editable fields depending on the state (mirror of lib/edicion.ts):
      * - draft: all
-     * - open: structural fields locked (sport, format, max_participants, is_individual)
+     * - open: structural fields locked (sport, format, max_participants,
+     *          players_per_team, is_individual)
      * - live/finished: no editing
      */
     public static function editableFields(string $status): array
@@ -84,7 +85,7 @@ class TournamentRules
             'title', 'sport', 'description', 'location', 'is_online', 'image', 'status',
             'format', 'max_participants', 'is_individual', 'start_date', 'end_date',
             'registration_deadline', 'registration_fee', 'currency', 'visibility',
-            'minimum_age', 'rules', 'max_substitutes', 'season_id',
+            'minimum_age', 'rules', 'max_substitutes', 'players_per_team', 'season_id',
         ];
     }
 

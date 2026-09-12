@@ -12,6 +12,7 @@ return new class extends Migration
             $table->foreignId('organizer_id')->constrained('users');
             $table->foreignId('season_id')->nullable()->constrained('tournament_seasons')->onDelete('set null');
             $table->string('title', 200);
+            $table->string('slug')->unique();
             $table->string('sport', 100);
             $table->text('description')->nullable();
             $table->string('location', 255)->nullable();
@@ -20,6 +21,7 @@ return new class extends Migration
             $table->enum('status', ['draft', 'paused', 'open', 'live', 'finished'])->default('draft');
             $table->enum('format', ['single_elimination', 'double_elimination', 'round_robin', 'groups', 'league']);
             $table->integer('max_participants')->unsigned();
+            $table->integer('players_per_team')->unsigned()->nullable();
             $table->boolean('is_individual')->default(false);
             $table->timestamp('start_date')->nullable();
             $table->timestamp('end_date')->nullable();

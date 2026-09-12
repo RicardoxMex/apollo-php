@@ -60,11 +60,13 @@ class TournamentRulesTest extends TestCase
         $this->assertContains('sport', $draft);
         $this->assertContains('format', $draft);
         $this->assertContains('max_participants', $draft);
+        $this->assertContains('players_per_team', $draft);
 
         $open = TournamentRules::editableFields('open');
         $this->assertNotContains('sport', $open);
         $this->assertNotContains('format', $open);
         $this->assertNotContains('max_participants', $open);
+        $this->assertNotContains('players_per_team', $open);
         $this->assertContains('title', $open);
 
         $this->assertSame([], TournamentRules::editableFields('live'));
