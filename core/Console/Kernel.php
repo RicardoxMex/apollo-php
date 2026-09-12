@@ -28,6 +28,9 @@ class Kernel
             'make:repository' => Commands\MakeRepositoryCommand::class,
             'make:seeder' => Commands\MakeSeederCommand::class,
             'make:service' => Commands\MakeServiceCommand::class,
+            'db:setup' => Commands\DatabaseSetupCommand::class,
+            'db:seed' => Commands\DatabaseSeedCommand::class,
+            'db:refresh' => Commands\DatabaseRefreshCommand::class,
             'realtime:start' => Commands\RealtimeStartCommand::class,
             'realtime:stop' => Commands\RealtimeStopCommand::class,
             'realtime:restart' => Commands\RealtimeRestartCommand::class,
@@ -35,6 +38,7 @@ class Kernel
             'realtime:test' => Commands\RealtimeTestCommand::class,
             'system:report' => Commands\SystemReportCommand::class,
             'test' => Commands\TestCommand::class,
+            'test:middleware' => Commands\MiddlewareTestCommand::class,
             'help' => Commands\HelpCommand::class,
         ];
     }

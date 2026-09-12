@@ -64,7 +64,7 @@ PHP;
 
         $this->info("✅ Seeder created: {$seederName}");
         $this->line("  Location: {$filePath}");
-        $this->line('  Runners:  php run_seeders.php');
+        $this->line('  Runners:  php apollo db:seed');
 
         return 0;
     }
