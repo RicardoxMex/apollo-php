@@ -61,7 +61,7 @@ class DatabaseSetupCommand extends Command
 
     private function dropAllTables(PDO $pdo): void
     {
-        $tables = $this->listTables($pdo);
+        $tables = DatabaseManager::listTables();
 
         if (empty($tables)) {
             $this->line('  No tables to drop.');
@@ -92,16 +92,5 @@ class DatabaseSetupCommand extends Command
         if (!empty($tables)) {
             throw new RuntimeException('Could not drop tables: ' . implode(', ', $tables));
         }
-    }
-
-    private function listTables(PDO $pdo): array
-    {
-        if (DatabaseManager::driver() === 'sqlite') {
-            $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
-            return array_map(fn ($row) => $row['name'], $stmt->fetchAll(PDO::FETCH_ASSOC));
-        }
-
-        $stmt = $pdo->query('SELECT table_name FROM information_schema.tables WHERE table_schema = DATABASE()');
-        return array_map(fn ($row) => $row['table_name'], $stmt->fetchAll(PDO::FETCH_ASSOC));
     }
 }
