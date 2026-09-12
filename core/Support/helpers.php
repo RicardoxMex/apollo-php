@@ -185,6 +185,20 @@ if (!function_exists('realtime')) {
     }
 }
 
+if (!function_exists('uploads')) {
+    /**
+     * Acceso al módulo uploads (UploadManager).
+     */
+    function uploads($abstract = null)
+    {
+        if (is_null($abstract)) {
+            return app(\Apollo\Core\Uploads\Support\UploadManager::class);
+        }
+
+        return app($abstract);
+    }
+}
+
 if (!function_exists('validator')) {
     /**
      * Crear un validador de datos (core/Validation).

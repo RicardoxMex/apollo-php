@@ -12,6 +12,7 @@ Bienvenido a la documentación oficial de Apollo Framework, un mini-framework PH
 - [**Estructura de Apps**](app-structure.md) - Cómo se compone una app y su `app.json`
 - [**Sistema de Autenticación**](authentication-system.md) - Auth JWT, roles y permisos
 - [**Validación de Datos**](validation.md) - Motor de validación del core (`core/Validation`)
+- [**Módulo Uploads**](uploads.md) - Subida y descarga de archivos (opcional)
 - [**Módulo Realtime**](realtime.md) - WebSockets, canales, notificaciones (opcional)
 
 ### Próximamente
