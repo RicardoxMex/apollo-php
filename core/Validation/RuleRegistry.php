@@ -4,6 +4,7 @@
 namespace Apollo\Core\Validation;
 
 use Apollo\Core\Database\Connection\DatabaseManager;
+use Apollo\Core\Uploads\Support\UploadedFile;
 use DateTime;
 use DateTimeInterface;
 use InvalidArgumentException;
@@ -165,8 +166,27 @@ class RuleRegistry
             'El campo :field no coincide con el formato :param.'
         );
 
-        // ── Tamaños (string: longitud, número: valor, array: count) ────────
-        $span = function ($value) {
+        // ── Tamaños (string: longitud, número: valor, array: count,
+        //    archivo: tamaño en KB) ───────────────────────────────────────
+        $fileSizeKb = function ($value) {
+            if ($value instanceof UploadedFile) {
+                return $value->size() / 1024;
+            }
+
+            if (is_array($value) && isset($value['size']) && is_numeric($value['size'])) {
+                return (float) $value['size'] / 1024;
+            }
+
+            return null;
+        };
+
+        $span = function ($value) use ($fileSizeKb) {
+            $kb = $fileSizeKb($value);
+
+            if ($kb !== null) {
+                return $kb;
+            }
+
             if (is_array($value)) {
                 return count($value);
             }
@@ -311,6 +331,50 @@ class RuleRegistry
             'La confirmación de :field no coincide.'
         );
 
+        // ── Archivos (subida vía $_FILES o UploadedFile) ─────────────────
+        $this->register(
+            'file',
+            function ($value) {
+                if ($value instanceof UploadedFile) {
+                    return $value->isValid();
+                }
+
+                if (!is_array($value) || !isset($value['tmp_name'], $value['error'])) {
+                    return false;
+                }
+
+                return (int) $value['error'] === UPLOAD_ERR_OK
+                    && is_file($value['tmp_name']);
+            },
+            'El campo :field debe ser un archivo válido.'
+        );
+
+        $this->register(
+            'mimes',
+            function ($value, array $params) {
+                $extension = $this->extensionOf($value);
+
+                if ($extension === null) {
+                    return false;
+                }
+
+                $allowed = array_map('strtolower', $params);
+
+                return in_array($extension, $allowed, true);
+            },
+            'El campo :field debe ser un archivo de tipo: :params.'
+        );
+
+        $this->register(
+            'image',
+            function ($value) {
+                $mime = $this->mimeOf($value);
+
+                return $mime !== null && str_starts_with($mime, 'image/');
+            },
+            'El campo :field debe ser una imagen.'
+        );
+
         // ── Patrón ─────────────────────────────────────────────────────────
         $this->register(
             'regex',
@@ -366,5 +430,42 @@ class RuleRegistry
             $dbRule('exists', true),
             'El valor de :field no existe.'
         );
+    }
+
+    /**
+     * Extensión del archivo (minúscula) para arrays de $_FILES o UploadedFile.
+     */
+    private function extensionOf(mixed $value): ?string
+    {
+        if ($value instanceof UploadedFile) {
+            $extension = $value->extension();
+
+            return $extension === '' ? null : $extension;
+        }
+
+        if (!is_array($value) || !isset($value['name']) || !is_string($value['name'])) {
+            return null;
+        }
+
+        $extension = strtolower(pathinfo($value['name'], PATHINFO_EXTENSION));
+
+        return $extension === '' ? null : $extension;
+    }
+
+    /**
+     * MIME del archivo: sniff real para UploadedFile (o type declarado),
+     * type declarado para arrays de $_FILES.
+     */
+    private function mimeOf(mixed $value): ?string
+    {
+        if ($value instanceof UploadedFile) {
+            return $value->mime();
+        }
+
+        if (!is_array($value) || !isset($value['type']) || !is_string($value['type'])) {
+            return null;
+        }
+
+        return $value['type'];
     }
 }

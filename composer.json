@@ -12,13 +12,13 @@
     "require": {
         "php": ">=8.3",
         "ext-pdo": "*",
-        "vlucas/phpdotenv": "^5.6",
         "psr/container": "^2.0",
         "psr/http-message": "^1.0",
-        "psr/http-server-handler": "^1.0"
+        "psr/http-server-handler": "^1.0",
+        "vlucas/phpdotenv": "^5.6",
+        "workerman/workerman": "^5.0"
     },
     "suggest": {
-        "ext-openswoole": "Servidor WebSocket realtime (realtime:start); instala con pecl install openswoole — Linux/macOS, no Windows",
         "ext-pdo_mysql": "Driver MySQL para la capa de base de datos",
         "ext-pdo_sqlite": "SQLite para desarrollo/tests sin servidor MySQL",
         "ext-redis": "Alternativa a nuestro cliente RESP nativo para RedisEventBus"
@@ -51,13 +51,22 @@
             "@php core/Console/Commands/InstallCommand.php"
         ],
         "test": "phpunit",
-        "start": "php -S localhost:8000 -t public"
+        "start": "php -S localhost:8000 -t public",
+        "websocket": "php apollo realtime:start",
+        "websocket:start-d": "php apollo realtime:start -d",
+        "websocket:stop": "php apollo realtime:stop",
+        "websocket:restart": "php apollo realtime:restart",
+        "websocket:status": "php apollo realtime:status",
+        "websocket:test": "php apollo realtime:test"
     },
     "config": {
         "optimize-autoloader": true,
         "preferred-install": "dist",
         "sort-packages": true,
-        "platform-check": false
+        "platform-check": false,
+        "audit": {
+            "ignore": ["PKSA-z3gr-8qht-p93v"]
+        }
     },
     "minimum-stability": "dev",
     "prefer-stable": true

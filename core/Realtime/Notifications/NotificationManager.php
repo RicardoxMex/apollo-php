@@ -62,6 +62,7 @@ class NotificationManager
     {
         $payload = $notification->toArray();
         $payload['notification_id'] = $notification->id();
+        $payload['created_at'] = date('Y-m-d H:i:s');
         $payload['channel'] = '';
 
         $sent = [];

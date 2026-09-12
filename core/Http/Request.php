@@ -3,6 +3,8 @@
 
 namespace Apollo\Core\Http;
 
+use Apollo\Core\Uploads\Support\UploadedFile;
+
 class Request
 {
     private array $query;
@@ -94,6 +96,130 @@ class Request
     public function all(): array
     {
         return array_merge($this->query, $this->request);
+    }
+
+    /**
+     * Archivo subido del campo indicado (UploadedFile|null).
+     * Normaliza $_FILES (simple y multi-file) a la forma interna del framework.
+     */
+    public function file(string $key): ?UploadedFile
+    {
+        $files = $this->normalizeFiles($this->files);
+
+        if (!isset($files[$key])) {
+            return null;
+        }
+
+        $entry = $files[$key];
+
+        // Multi-file con un solo elemento (file[0]): el primero
+        if (is_array($entry) && array_is_list($entry)) {
+            return UploadedFile::fromArray($entry[0] ?? []);
+        }
+
+        return UploadedFile::fromArray($entry);
+    }
+
+    /**
+     * ¿El request trae un archivo válido en el campo indicado?
+     */
+    public function hasFile(string $key): bool
+    {
+        $file = $this->file($key);
+
+        return $file !== null && $file->isValid();
+    }
+
+    /**
+     * Archivos del campo indicado (array de UploadedFile), o todos los campos.
+     *
+     * @return array<string, UploadedFile>|UploadedFile[]|array
+     */
+    public function files(?string $key = null): array
+    {
+        $files = $this->normalizeFiles($this->files);
+
+        if ($key !== null) {
+            $entry = $files[$key] ?? [];
+
+            if (is_array($entry) && array_is_list($entry)) {
+                return array_values(array_filter(array_map(
+                    fn ($item) => UploadedFile::fromArray($item),
+                    $entry
+                )));
+            }
+
+            $file = UploadedFile::fromArray($entry);
+
+            return $file === null ? [] : [$file];
+        }
+
+        $result = [];
+
+        foreach ($files as $field => $entry) {
+            if (is_array($entry) && array_is_list($entry)) {
+                foreach ($entry as $item) {
+                    $result[] = UploadedFile::fromArray($item);
+                }
+            } else {
+                $result[] = UploadedFile::fromArray($entry);
+            }
+        }
+
+        return array_values(array_filter($result));
+    }
+
+    /**
+     * Todos los archivos subidos como array de UploadedFile.
+     *
+     * @return UploadedFile[]
+     */
+    public function allFiles(): array
+    {
+        return $this->files();
+    }
+
+    /**
+     * Normalizar $_FILES: las estructuras `name[name]` y `files[0]` a listas.
+     */
+    private function normalizeFiles(array $files): array
+    {
+        $normalized = [];
+
+        foreach ($files as $key => $value) {
+            if (!is_array($value) || !isset($value['name'])) {
+                $normalized[$key] = $value;
+                continue;
+            }
+
+            // name puede ser string (single) o array (multi: files[], files[0], files[n])
+            if (is_array($value['name'])) {
+                $entries = [];
+
+                foreach (array_keys($value['name']) as $index) {
+                    $entryName = $value['name'][$index];
+
+                    // Estructura exótica files[n][name]: no la genera un input de archivo estándar
+                    if (is_array($entryName)) {
+                        continue;
+                    }
+
+                    $entries[] = [
+                        'name' => $entryName,
+                        'type' => $value['type'][$index] ?? null,
+                        'tmp_name' => $value['tmp_name'][$index] ?? null,
+                        'error' => $value['error'][$index] ?? UPLOAD_ERR_NO_FILE,
+                        'size' => $value['size'][$index] ?? 0,
+                    ];
+                }
+
+                $normalized[$key] = $entries;
+            } else {
+                $normalized[$key] = $value;
+            }
+        }
+
+        return $normalized;
     }
 
     public function header(string $key, $default = null)

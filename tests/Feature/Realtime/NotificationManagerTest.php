@@ -62,8 +62,8 @@ class NotificationManagerTest extends TestCase
 
         $this->assertSame(['database', 'realtime'], $sent);
         $this->assertCount(1, $received);
-        $this->assertSame('notification.received', $received[0]['event']);
-        $this->assertSame(123, $received[0]['data']['notification']['data']['order_id']);
+        $this->assertSame('notification', $received[0]['event']);
+        $this->assertSame(123, $received[0]['data']['data']['order_id']);
     }
 
     public function test_disabled_channel_is_skipped(): void

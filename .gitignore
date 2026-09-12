@@ -4,3 +4,5 @@
 /.phpunit.cache/
 /database/*.sqlite
 /runtime/
+/storage/uploads/*
+!/storage/uploads/.gitignore

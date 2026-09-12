@@ -107,6 +107,43 @@ class ConnectionManager
         return true;
     }
 
+    /**
+     * Entrega un payload a TODAS las conexiones autenticadas del usuario.
+     * Devuelve el número de conexiones a las que se entregó.
+     */
+    public function sendToUser(int|string $userId, array $payload): int
+    {
+        $connections = $this->connectionsForUser($userId);
+        $delivered = 0;
+
+        foreach ($connections as $connection) {
+            if ($connection->send($payload)) {
+                $delivered++;
+            }
+        }
+
+        return $delivered;
+    }
+
+    /**
+     * Barredor de conexiones inactivas: desconecta las que llevan más de
+     * `$timeoutSeconds` sin actividad. Devuelve el número de conexiones eliminadas.
+     */
+    public function sweep(int $timeoutSeconds): int
+    {
+        $removed = 0;
+        $now = time();
+
+        foreach ($this->connections as $id => $connection) {
+            if (($now - $connection->lastSeen()) > $timeoutSeconds) {
+                $this->disconnect($id);
+                $removed++;
+            }
+        }
+
+        return $removed;
+    }
+
     public function broadcast(array $payload, ?array $exceptConnectionIds = []): void
     {
         foreach ($this->connections as $id => $connection) {
@@ -127,6 +164,16 @@ class ConnectionManager
     public function hasUser(int|string $userId): bool
     {
         return !empty($this->userConnections[$userId] ?? []);
+    }
+
+    /**
+     * IDs de los usuarios con al menos una conexión activa.
+     *
+     * @return array<int, int|string>
+     */
+    public function getUserIds(): array
+    {
+        return array_keys($this->userConnections);
     }
 
     public function countConnections(): int

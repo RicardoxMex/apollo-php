@@ -27,14 +27,14 @@ class RealtimeChannel implements NotificationChannel
         $channel = "private-user.{$userId}";
 
         $data = [
-            'notification' => [
-                'type' => $payload['type'] ?? 'notification',
-                'title' => $payload['title'] ?? '',
-                'message' => $payload['message'] ?? '',
-                'data' => $payload['data'] ?? [],
-            ],
+            'id' => $payload['notification_id'] ?? $payload['id'] ?? null,
+            'type' => $payload['type'] ?? 'notification',
+            'title' => $payload['title'] ?? '',
+            'message' => $payload['message'] ?? '',
+            'data' => $payload['data'] ?? [],
+            'created_at' => $payload['created_at'] ?? null,
         ];
 
-        $this->realtime->broadcast($channel, 'notification.received', $data);
+        $this->realtime->broadcast($channel, 'notification', $data);
     }
 }

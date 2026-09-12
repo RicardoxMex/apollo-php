@@ -24,9 +24,17 @@ class RealtimeManager
     private ?EventBus $bus = null;
     private ?string $resolvedDriver = null;
 
-    public function __construct(array $config, ?callable $redisFactory = null)
+    /**
+     * Modo del proceso:
+     *  - true  → bus en proceso (LocalEventBus/RedisEventBus). Tests, CLI, server-side.
+     *  - false → bus cross-process (HttpEventBus para local, RedisEventBus para redis). App-side.
+     */
+    private bool $inProcess;
+
+    public function __construct(array $config, ?callable $redisFactory = null, bool $inProcess = true)
     {
         $this->config = new RealtimeConfig($config);
+        $this->inProcess = $inProcess;
 
         // Default: RedisClient con la config de redis
         $this->redisFactory = $redisFactory
@@ -75,7 +83,13 @@ class RealtimeManager
 
         if ($driver === 'redis') {
             $this->bus = new RedisEventBus(($this->redisFactory)());
+        } elseif ($this->inProcess) {
+            $this->bus = new LocalEventBus();
         } else {
+            // App-side (no in-process): el bus local no puede alcanzar al servidor
+            // desde otro proceso. La entrega a usuarios se hace por polling del
+            // servidor sobre la tabla `notifications` (ver design D4-revisado).
+            // Para canales public/private/presence cross-process, usar Redis.
             $this->bus = new LocalEventBus();
         }
 
@@ -106,5 +120,10 @@ class RealtimeManager
     public function config(): RealtimeConfig
     {
         return $this->config;
+    }
+
+    public function isInProcess(): bool
+    {
+        return $this->inProcess;
     }
 }

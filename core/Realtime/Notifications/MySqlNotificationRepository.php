@@ -80,6 +80,20 @@ class MySqlNotificationRepository implements NotificationRepository
         ]) > 0;
     }
 
+    public function forUserAfterId(int|string $userId, string $afterId, int $limit = 50): array
+    {
+        $query = new QueryBuilder($this->pdo, 'notifications');
+
+        $query->where('user_id', $userId);
+        $query->where('id', '>', $afterId);
+        $query->orderBy('id', 'ASC');
+        $query->limit($limit);
+
+        $rows = $query->get();
+
+        return array_map(fn($row) => $this->hydrate($row), $rows);
+    }
+
     public function delete(string $id): bool
     {
         return $this->table()->where('id', $id)->delete() > 0;
