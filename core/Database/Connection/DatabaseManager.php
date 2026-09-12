@@ -24,7 +24,31 @@ class DatabaseManager {
     public static function driver(): string {
         return self::$config['driver'] ?? self::$config['connection'] ?? 'mysql';
     }
-    
+
+    /**
+     * Lista las tablas de usuario de la base de datos activa (excluye tablas
+     * internas de SQLite como sqlite_sequence). Driver-aware.
+     *
+     * MySQL:  information_schema.tables (columna TABLE_NAME, mayúsculas).
+     * SQLite: sqlite_master.
+     *
+     * @return string[]
+     */
+    public static function listTables(): array
+    {
+        $pdo = self::getConnection();
+
+        if (self::driver() === 'sqlite') {
+            $stmt = $pdo->query("SELECT name FROM sqlite_master WHERE type='table' AND name NOT LIKE 'sqlite_%'");
+            return $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+        }
+
+        // MySQL: information_schema.tables tiene la columna TABLE_NAME (mayúsculas).
+        // Usamos fetchColumn(0) para evitar depender del case del nombre de columna.
+        $stmt = $pdo->query('SELECT TABLE_NAME FROM information_schema.tables WHERE table_schema = DATABASE()');
+        return $stmt->fetchAll(PDO::FETCH_COLUMN, 0);
+    }
+
     public static function getConnection(): PDO {
         if (self::$connection === null) {
             self::createConnection();
