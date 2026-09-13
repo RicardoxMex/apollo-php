@@ -13,6 +13,7 @@ return new class extends Migration
             $table->foreignId('draw_match_id')->nullable()->constrained('draw_matches')->onDelete('set null');
             $table->integer('round_number')->unsigned();
             $table->integer('match_number')->unsigned()->nullable();
+            $table->string('label', 255)->nullable();
             $table->foreignId('participant_a_id')->nullable()->constrained('tournament_participants')->onDelete('set null');
             $table->foreignId('participant_b_id')->nullable()->constrained('tournament_participants')->onDelete('set null');
             $table->foreignId('winner_participant_id')->nullable()->constrained('tournament_participants')->onDelete('set null');

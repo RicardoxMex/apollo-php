@@ -152,4 +152,35 @@ class BracketGeneratorTest extends TestCase
         $this->assertSame([], BracketGenerator::generateRoundRobin([]));
         $this->assertSame([], BracketGenerator::generateRoundRobin([5]));
     }
+
+    public function test_round_robin_ida_y_vuelta_duplicates_with_reversed_cruces(): void
+    {
+        $ida = BracketGenerator::generateRoundRobin([1, 2, 3, 4], false);
+        $vuelta = BracketGenerator::generateRoundRobin([1, 2, 3, 4], true);
+
+        // Double: 12 fixtures (6 ida + 6 vuelta), match_number global 1..12.
+        $this->assertCount(12, $vuelta);
+        $this->assertSame([1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12], array_column($vuelta, 'match_number'));
+        // Jornadas 1..3 (ida) y 4..6 (vuelta).
+        $this->assertSame([1, 1, 2, 2, 3, 3, 4, 4, 5, 5, 6, 6], array_column($vuelta, 'round_number'));
+
+        // La vuelta invierte los cruces de la ida.
+        for ($i = 0; $i < 6; $i++) {
+            $this->assertSame($ida[$i]['participant_a_id'], $vuelta[$i + 6]['participant_b_id']);
+            $this->assertSame($ida[$i]['participant_b_id'], $vuelta[$i + 6]['participant_a_id']);
+        }
+
+        // Cada pareja aparece dos veces (ida y vuelta).
+        $pairs = [];
+        foreach ($vuelta as $m) {
+            $pair = [$m['participant_a_id'], $m['participant_b_id']];
+            sort($pair);
+            $key = implode('-', $pair);
+            $pairs[$key] = ($pairs[$key] ?? 0) + 1;
+        }
+        $this->assertCount(6, $pairs);
+        foreach ($pairs as $n) {
+            $this->assertSame(2, $n, 'cada pareja se juega dos veces');
+        }
+    }
 }

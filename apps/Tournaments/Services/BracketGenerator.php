@@ -102,12 +102,50 @@ class BracketGenerator
     /**
      * Round-robin fixtures for a group (single round, circle method).
      * With an odd number of teams one rests per jornada (bye).
+     * If `$idaVuelta` is true, each pairing is duplicated with reversed
+     * home/away (double round: everyone plays everyone twice).
      *
      * @param array $participantIds ids of tournament_participants
+     * @param bool  $idaVuelta      double round (ida y vuelta)
      * @return array{round_number:int, match_number:int, participant_a_id:int|null, participant_b_id:int|null}[]
      *         `match_number` is global (consecutive across jornadas).
      */
-    public static function generateRoundRobin(array $participantIds): array
+    public static function generateRoundRobin(array $participantIds, bool $idaVuelta = false): array
+    {
+        $ida = self::roundRobinIda($participantIds);
+        if (!$idaVuelta) {
+            return $ida;
+        }
+
+        // Vuelta: mismas jornadas con los cruces invertidos (a↔b), numeradas
+        // a continuación de la ida.
+        $maxRonda = 0;
+        $maxMatch = 0;
+        foreach ($ida as $m) {
+            $maxRonda = max($maxRonda, (int) $m['round_number']);
+            $maxMatch = max($maxMatch, (int) $m['match_number']);
+        }
+        $out = [];
+        $matchNumber = $maxMatch;
+        foreach ($ida as $m) {
+            $matchNumber += 1;
+            $out[] = [
+                'round_number' => (int) $m['round_number'] + $maxRonda,
+                'match_number' => $matchNumber,
+                'participant_a_id' => $m['participant_b_id'],
+                'participant_b_id' => $m['participant_a_id'],
+            ];
+        }
+        return array_merge($ida, $out);
+    }
+
+    /**
+     * Round-robin single round (ida).
+     *
+     * @param array $participantIds ids of tournament_participants
+     * @return array{round_number:int, match_number:int, participant_a_id:int|null, participant_b_id:int|null}[]
+     */
+    private static function roundRobinIda(array $participantIds): array
     {
         $teams = array_values($participantIds);
         $count = count($teams);

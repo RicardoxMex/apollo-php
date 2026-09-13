@@ -27,7 +27,7 @@ class RegistrationController extends Controller
         } catch (ValidationException $e) {
             return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 409);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 409);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo enviar la solicitud', 'message' => $e->getMessage()], 500);
         }
@@ -44,7 +44,7 @@ class RegistrationController extends Controller
         } catch (ValidationException $e) {
             return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo decidir la solicitud', 'message' => $e->getMessage()], 500);
         }
@@ -56,7 +56,7 @@ class RegistrationController extends Controller
             $registration = $this->registrations->cancel($this->actorId(), (int) $tournamentId, (int) $registrationId, $this->request);
             return $this->json(['success' => true, 'data' => $registration, 'message' => 'Solicitud cancelada']);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo cancelar la solicitud', 'message' => $e->getMessage()], 500);
         }

@@ -81,8 +81,16 @@ class TournamentService
         if ($format === null) {
             throw new \InvalidArgumentException('Formato inv�lido');
         }
-        if ($maxParticipants < 2) {
-            throw new \InvalidArgumentException('El cupo m�ximo debe ser al menos 2');
+if ($maxParticipants < 2) {
+            throw new \InvalidArgumentException('El cupo m\u00e1ximo debe ser al menos 2');
+        }
+
+        $clasificados = max(0, (int) ($data['clasificados_eliminacion'] ?? 0));
+        if ($clasificados > $maxParticipants) {
+            throw new \InvalidArgumentException('El n\u00famero de clasificados no puede superar el de equipos');
+        }
+        if (!TournamentRules::esBracketCompleto($clasificados)) {
+            throw new \InvalidArgumentException('El cuadro final debe ser completo: usa una potencia de 2 (2, 4, 8, 16\u2026) para que ning\u00fan equipo se quede sin jornada');
         }
 
         $pdo = DatabaseManager::getConnection();
@@ -96,16 +104,18 @@ class TournamentService
                 'sport' => trim($data['sport'] ?? ''),
                 'description' => $data['description'] ?? null,
                 'location' => $data['location'] ?? null,
-                'is_online' => !empty($data['is_online']) ? 1 : 0,
+                'is_online' => filter_var($data['is_online'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 1 : 0,
                 'image' => $data['image'] ?? null,
                 'status' => 'draft',
                 'format' => $format,
                 'max_participants' => $maxParticipants,
-                'is_individual' => !empty($data['is_individual']) ? 1 : 0,
+                'clasificados_eliminacion' => max(0, (int) ($data['clasificados_eliminacion'] ?? 0)),
+                'ida_vuelta' => filter_var($data['ida_vuelta'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 1 : 0,
+                'is_individual' => filter_var($data['is_individual'] ?? false, FILTER_VALIDATE_BOOLEAN) ? 1 : 0,
                 'start_date' => $data['start_date'] ?? null,
                 'end_date' => $data['end_date'] ?? null,
                 'registration_deadline' => $data['registration_deadline'] ?? null,
-                'registration_fee' => $data['registration_fee'] ?? 0,
+                'registration_fee' => 0, // lanzamiento gratis: el backend no cobra cuotas por ahora
                 'currency' => strtoupper($data['currency'] ?? 'USD'),
                 'visibility' => Mappings::visibilityFromApi($data['visibility'] ?? 'publico') ?? 'public',
                 'minimum_age' => !empty($data['minimum_age']) ? (int) $data['minimum_age'] : null,
@@ -114,29 +124,8 @@ class TournamentService
                 'players_per_team' => !empty($data['players_per_team']) ? (int) $data['players_per_team'] : null,
             ]);
 
-            if (!empty($data['prizes']) && is_array($data['prizes'])) {
-                $stmt = $pdo->prepare('INSERT INTO tournament_prizes (tournament_id, position, amount, currency, label) VALUES (?, ?, ?, ?, ?)');
-                foreach (array_slice($data['prizes'], 0, 3) as $prize) {
-                    $stmt->execute([
-                        $id,
-                        (int) ($prize['position'] ?? 1),
-                        $prize['amount'] ?? 0,
-                        strtoupper($prize['currency'] ?? $data['currency'] ?? 'USD'),
-                        $prize['label'] ?? null,
-                    ]);
-                }
-            }
-
-            if (!empty($data['stats']) && is_array($data['stats'])) {
-                $stmt = $pdo->prepare('INSERT INTO tournament_stats (tournament_id, label, type, per_player) VALUES (?, ?, ?, ?)');
-                foreach ($data['stats'] as $stat) {
-                    $stmt->execute([
-                        $id,
-                        $stat['label'] ?? 'Puntos',
-                        in_array($stat['type'] ?? null, ['number', 'boolean'], true) ? $stat['type'] : 'number',
-                        !empty($stat['per_player']) ? 1 : 0,
-                    ]);
-                }
+            if (array_key_exists('stats', $data) || array_key_exists('prizes', $data)) {
+                $this->persistStatsAndPrizes($pdo, (int) $id, $data);
             }
 
             $pdo->commit();
@@ -162,8 +151,32 @@ class TournamentService
         $this->ensureOrganizer($actorId, $tournament);
 
         $editable = TournamentRules::filterEditableFields($tournament['status'], $data);
-        if ($editable === [] && $data !== []) {
-            throw new \RuntimeException('Este torneo no admite edición en su estado actual');
+
+        // PDO enlaza false como '' → MySQL rechaza el TINYINT. Normalizar a 0/1.
+        foreach (['is_online', 'is_individual', 'ida_vuelta'] as $boolField) {
+            if (array_key_exists($boolField, $editable)) {
+                $editable[$boolField] = filter_var($editable[$boolField], FILTER_VALIDATE_BOOLEAN) ? 1 : 0;
+            }
+        }
+
+if ($editable === [] && $data !== []) {
+            throw new \RuntimeException('Este torneo no admite edici\u00f3n en su estado actual');
+        }
+
+        if (array_key_exists('clasificados_eliminacion', $editable)) {
+            $clasificados = max(0, (int) $editable['clasificados_eliminacion']);
+            $max = (int) ($editable['max_participants'] ?? $tournament['max_participants']);
+            if ($clasificados > $max) {
+                throw new \InvalidArgumentException('El n\u00famero de clasificados no puede superar el de equipos');
+            }
+            if (!TournamentRules::esBracketCompleto($clasificados)) {
+                throw new \InvalidArgumentException('El cuadro final debe ser completo: usa una potencia de 2 (2, 4, 8, 16\u2026) para que ning\u00fan equipo se quede sin jornada');
+            }
+        }
+
+        // Lanzamiento gratis: la cuota de inscripción siempre queda en 0.
+        if (array_key_exists('registration_fee', $editable)) {
+            $editable['registration_fee'] = 0;
         }
 
         // Si cambia el título, el slug se regenera (único contra el resto).
@@ -171,9 +184,69 @@ class TournamentService
             $editable['slug'] = $this->slugUnico($pdo, (string) $editable['title'], $id);
         }
 
+        // Stats y premios se persisten en sus tablas anidadas (reemplazo total),
+        // igual que en create; el update genérico no las conoce.
+        if (array_key_exists('stats', $editable) || array_key_exists('prizes', $editable)) {
+            $pdo->beginTransaction();
+            try {
+                $this->persistStatsAndPrizes($pdo, $id, $editable, true);
+                $pdo->commit();
+            } catch (\Throwable $e) {
+                $pdo->rollBack();
+                throw $e;
+            }
+            unset($editable['stats'], $editable['prizes']);
+        }
+
         $this->tournaments->update($id, $editable);
         $this->audit->record($actorId, 'tournament', $id, 'torneo:actualizar', $tournament, $editable, $request);
         return $this->show($id);
+    }
+
+    /**
+     * Persiste la configuración anidada del torneo (tournament_stats y
+     * tournament_prizes). Con $reemplazar=true borra las filas previas del
+     * torneo antes de insertar (semántica del update).
+     */
+    private function persistStatsAndPrizes(PDO $pdo, int $id, array $data, bool $reemplazar = false): void
+    {
+        if ($reemplazar) {
+            if (array_key_exists('stats', $data)) {
+                $pdo->prepare('DELETE FROM tournament_stats WHERE tournament_id = ?')->execute([$id]);
+            }
+            if (array_key_exists('prizes', $data)) {
+                $pdo->prepare('DELETE FROM tournament_prizes WHERE tournament_id = ?')->execute([$id]);
+            }
+        }
+
+        if (!empty($data['stats']) && is_array($data['stats'])) {
+            $stmt = $pdo->prepare('INSERT INTO tournament_stats (tournament_id, label, type, per_player) VALUES (?, ?, ?, ?)');
+            foreach ($data['stats'] as $stat) {
+                $type = $stat['type'] ?? $stat['tipo'] ?? null;
+                $perPlayer = $stat['per_player'] ?? $stat['porJugador'] ?? 0;
+                $stmt->execute([
+                    $id,
+                    $stat['label'] ?? 'Puntos',
+                    in_array($type, ['number', 'boolean', 'bool'], true)
+                        ? ($type === 'bool' ? 'boolean' : $type)
+                        : 'number',
+                    !empty($perPlayer) ? 1 : 0,
+                ]);
+            }
+        }
+
+        if (!empty($data['prizes']) && is_array($data['prizes'])) {
+            $stmt = $pdo->prepare('INSERT INTO tournament_prizes (tournament_id, position, amount, currency, label) VALUES (?, ?, ?, ?, ?)');
+            foreach (array_slice($data['prizes'], 0, 3) as $prize) {
+                $stmt->execute([
+                    $id,
+                    (int) ($prize['position'] ?? 1),
+                    $prize['amount'] ?? 0,
+                    strtoupper($prize['currency'] ?? $data['currency'] ?? 'USD'),
+                    $prize['label'] ?? null,
+                ]);
+            }
+        }
     }
 
     public function delete(int $actorId, int $id, ?Request $request = null): bool
@@ -217,11 +290,13 @@ class TournamentService
                 'status' => 'draft',
                 'format' => $tournament['format'],
                 'max_participants' => $tournament['max_participants'],
+                'clasificados_eliminacion' => (int) ($tournament['clasificados_eliminacion'] ?? 0),
+                'ida_vuelta' => (int) ($tournament['ida_vuelta'] ?? 0),
                 'is_individual' => $tournament['is_individual'],
                 'start_date' => $tournament['start_date'],
                 'end_date' => $tournament['end_date'],
                 'registration_deadline' => $tournament['registration_deadline'],
-                'registration_fee' => $tournament['registration_fee'],
+                'registration_fee' => 0, // lanzamiento gratis
                 'currency' => $tournament['currency'],
                 'visibility' => $tournament['visibility'],
                 'minimum_age' => $tournament['minimum_age'],

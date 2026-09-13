@@ -53,7 +53,119 @@ class MatchService
     }
 
     /**
-     * Updates an official match (organizer only, tournament live):
+     * Creates an official match (organizer only; not allowed when finished):
+     * participants, round and status. Used by the frontend when generating
+     * round-robin jornadas or registering a game manually.
+     */
+    public function create(int $actorId, int $tournamentId, array $data): ?array
+    {
+        $pdo = $this->pdo();
+
+        $stmt = $pdo->prepare('SELECT * FROM tournaments WHERE id = ? AND deleted_at IS NULL');
+        $stmt->execute([$tournamentId]);
+        $tournament = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$tournament) {
+            throw new \RuntimeException('Torneo no encontrado', 404);
+        }
+        if ((int) $tournament['organizer_id'] !== $actorId) {
+            throw new \RuntimeException('No eres el organizador de este torneo', 403);
+        }
+        if ($tournament['status'] === 'finished') {
+            throw new \RuntimeException('No se pueden crear partidos en un torneo finalizado', 409);
+        }
+
+        $round = max(1, (int) ($data['round_number'] ?? 1));
+        $status = $data['status'] ?? 'pending';
+        if (!in_array($status, ['pending', 'scheduled', 'live'], true)) {
+            throw new \InvalidArgumentException('Estado de partido inválido');
+        }
+        $label = isset($data['label']) && $data['label'] !== '' && $data['label'] !== null
+            ? trim((string) $data['label'])
+            : null;
+        $participantA = isset($data['participant_a_id']) && $data['participant_a_id'] !== '' && $data['participant_a_id'] !== null
+            ? (int) $data['participant_a_id']
+            : null;
+        $participantB = isset($data['participant_b_id']) && $data['participant_b_id'] !== '' && $data['participant_b_id'] !== null
+            ? (int) $data['participant_b_id']
+            : null;
+
+        // Los participantes deben estar inscritos en el torneo.
+        foreach (array_filter([$participantA, $participantB], fn ($pid) => $pid !== null) as $pid) {
+            $stmt = $pdo->prepare('SELECT id FROM tournament_participants WHERE id = ? AND tournament_id = ?');
+            $stmt->execute([$pid, $tournamentId]);
+            if (!$stmt->fetchColumn()) {
+                throw new \InvalidArgumentException('Participante no inscrito en el torneo');
+            }
+        }
+
+        $stmt = $pdo->prepare('SELECT COALESCE(MAX(match_number), 0) + 1 FROM matches WHERE tournament_id = ?');
+        $stmt->execute([$tournamentId]);
+        $matchNumber = (int) $stmt->fetchColumn();
+
+        $stmt = $pdo->prepare(
+            'INSERT INTO matches (tournament_id, round_number, match_number, label, participant_a_id, participant_b_id, status, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([
+            $tournamentId,
+            $round,
+            $matchNumber,
+            $label,
+            $participantA,
+            $participantB,
+            $status,
+            date('Y-m-d H:i:s'),
+            date('Y-m-d H:i:s'),
+        ]);
+        $matchId = (int) $pdo->lastInsertId();
+
+        $this->audit->record($actorId, 'match', $matchId, 'partido:crear', null, $data);
+
+        $stmt = $pdo->prepare('SELECT * FROM matches WHERE id = ?');
+        $stmt->execute([$matchId]);
+        $match = $stmt->fetch(PDO::FETCH_ASSOC);
+        $match['scores'] = [];
+        $match['player_stats'] = [];
+        return $match;
+    }
+
+    /**
+     * Deletes an official match (organizer only, not finished). Cascades to
+     * scores and per-player stats.
+     */
+    public function delete(int $actorId, int $tournamentId, int $matchId): bool
+    {
+        $pdo = $this->pdo();
+
+        $stmt = $pdo->prepare('SELECT * FROM tournaments WHERE id = ? AND deleted_at IS NULL');
+        $stmt->execute([$tournamentId]);
+        $tournament = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$tournament) {
+            throw new \RuntimeException('Torneo no encontrado', 404);
+        }
+        if ((int) $tournament['organizer_id'] !== $actorId) {
+            throw new \RuntimeException('No eres el organizador de este torneo', 403);
+        }
+        if ($tournament['status'] === 'finished') {
+            throw new \RuntimeException('No se pueden eliminar partidos en un torneo finalizado', 409);
+        }
+
+        $stmt = $pdo->prepare('SELECT * FROM matches WHERE id = ? AND tournament_id = ?');
+        $stmt->execute([$matchId, $tournamentId]);
+        $match = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$match) {
+            throw new \RuntimeException('Partido no encontrado', 404);
+        }
+
+        $stmt = $pdo->prepare('DELETE FROM matches WHERE id = ?');
+        $stmt->execute([$matchId]);
+
+        $this->audit->record($actorId, 'match', $matchId, 'partido:eliminar', $match);
+        return true;
+    }
+
+    /**
+     * Updates an official match (organizer only, tournament not finished):
      * status, date, per-stat scores, per-player stats and winner.
      * On completion it propagates status/winner to the bracket (draw_match) and
      * advances to the next fixture (round-trip BRK-03/MVP-B of the frontend).
@@ -71,8 +183,8 @@ class MatchService
         if ((int) $tournament['organizer_id'] !== $actorId) {
             throw new \RuntimeException('No eres el organizador de este torneo', 403);
         }
-        if ($tournament['status'] !== 'live') {
-            throw new \RuntimeException('Los partidos solo se actualizan con el torneo en vivo', 409);
+        if ($tournament['status'] === 'finished') {
+            throw new \RuntimeException('Los partidos no se modifican con el torneo finalizado', 409);
         }
 
         $stmt = $pdo->prepare('SELECT * FROM matches WHERE id = ? AND tournament_id = ?');
@@ -88,6 +200,9 @@ class MatchService
         }
 
         $fields = ['status' => $newStatus];
+        if (array_key_exists('label', $data)) {
+            $fields['label'] = $data['label'] !== null && $data['label'] !== '' ? trim((string) $data['label']) : null;
+        }
         if (isset($data['scheduled_at'])) {
             $fields['scheduled_at'] = $data['scheduled_at'];
         }

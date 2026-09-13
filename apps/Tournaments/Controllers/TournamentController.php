@@ -15,6 +15,8 @@ class TournamentController extends Controller
         'title'                 => 'required|string|min:3|max:120',
         'format'                => 'required|in:eliminacion-directa,doble-eliminacion,round-robin,grupos,liga',
         'max_participants'      => 'required|integer|min:2',
+        'clasificados_eliminacion' => 'nullable|integer|min:0',
+        'ida_vuelta'            => 'nullable|boolean',
         'players_per_team'      => 'nullable|integer|min:1',
         'sport'                 => 'nullable|string|max:60',
         'description'           => 'nullable|string|max:2000',
@@ -118,7 +120,7 @@ class TournamentController extends Controller
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo actualizar el torneo', 'message' => $e->getMessage()], 500);
         }
@@ -132,7 +134,7 @@ class TournamentController extends Controller
             }
             return $this->json(['success' => true, 'message' => 'Torneo eliminado']);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo eliminar el torneo', 'message' => $e->getMessage()], 500);
         }
@@ -164,7 +166,7 @@ class TournamentController extends Controller
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 409);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 409);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo cambiar el estado del torneo', 'message' => $e->getMessage()], 500);
         }
@@ -187,7 +189,7 @@ class TournamentController extends Controller
                 'data' => $this->registrations->list((int) $tournamentId, $this->actorId(), $this->request->query('status')),
             ]);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudieron listar las solicitudes', 'message' => $e->getMessage()], 500);
         }
@@ -206,9 +208,10 @@ class TournamentController extends Controller
     {
         try {
             $data = $this->validate($this->body(), [
-                'type'       => 'required|in:groups,bracket,manual',
-                'num_groups' => 'nullable|integer|min:2',
-                'groups'     => 'nullable|array',
+                'type'            => 'required|in:groups,bracket,manual',
+                'num_groups'      => 'nullable|integer|min:2',
+                'groups'          => 'nullable|array',
+                'participant_ids' => 'nullable|array',
             ]);
             $draw = $this->draws->generate($this->actorId(), (int) $tournamentId, $data, $this->request);
             return $this->json(['success' => true, 'data' => $draw, 'message' => 'Sorteo generado']);
@@ -217,7 +220,7 @@ class TournamentController extends Controller
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 409);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 409);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo generar el sorteo', 'message' => $e->getMessage()], 500);
         }
@@ -229,7 +232,7 @@ class TournamentController extends Controller
             $draw = $this->draws->delete($this->actorId(), (int) $tournamentId, $this->request);
             return $this->json(['success' => true, 'data' => $draw, 'message' => 'Sorteo limpiado']);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo limpiar el sorteo', 'message' => $e->getMessage()], 500);
         }
@@ -244,7 +247,7 @@ class TournamentController extends Controller
             }
             return $this->json(['success' => true, 'data' => $tournament, 'message' => 'Torneo duplicado'], 201);
         } catch (\RuntimeException $e) {
-            return $this->json(['error' => $e->getMessage()], $e->getCode() ?: 403);
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo duplicar el torneo', 'message' => $e->getMessage()], 500);
         }

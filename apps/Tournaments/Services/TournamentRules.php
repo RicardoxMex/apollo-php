@@ -83,9 +83,10 @@ class TournamentRules
 
         return [
             'title', 'sport', 'description', 'location', 'is_online', 'image', 'status',
-            'format', 'max_participants', 'is_individual', 'start_date', 'end_date',
+            'format', 'max_participants', 'clasificados_eliminacion', 'ida_vuelta', 'is_individual', 'start_date', 'end_date',
             'registration_deadline', 'registration_fee', 'currency', 'visibility',
             'minimum_age', 'rules', 'max_substitutes', 'players_per_team', 'season_id',
+            'stats', 'prizes',
         ];
     }
 
@@ -163,5 +164,18 @@ class TournamentRules
             return ['ok' => false, 'reason' => 'Acción inválida: usa accepted o rejected'];
         }
         return ['ok' => true];
+    }
+
+    /**
+     * El número de clasificados a eliminación directa debe formar un bracket
+     * COMPLETO: potencia de 2 (2, 4, 8, 16…) para que ningún equipo se quede
+     * sin jornada en el cuadro final. 0 = sin fase final (válido).
+     */
+    public static function esBracketCompleto(int $clasificados): bool
+    {
+        if ($clasificados === 0) {
+            return true;
+        }
+        return $clasificados >= 2 && ($clasificados & ($clasificados - 1)) === 0;
     }
 }

@@ -21,6 +21,10 @@ return new class extends Migration
             $table->enum('status', ['draft', 'paused', 'open', 'live', 'finished'])->default('draft');
             $table->enum('format', ['single_elimination', 'double_elimination', 'round_robin', 'groups', 'league']);
             $table->integer('max_participants')->unsigned();
+            $table->integer('clasificados_eliminacion')->unsigned()->default(0);
+            // Round-robin / liga: true = fase de todos contra todos a ida y
+            // vuelta (doble ronda) antes del bracket.
+            $table->boolean('ida_vuelta')->default(false);
             $table->integer('players_per_team')->unsigned()->nullable();
             $table->boolean('is_individual')->default(false);
             $table->timestamp('start_date')->nullable();

@@ -53,6 +53,25 @@ class DrawService
         $stmt->execute([$tournamentId]);
         $participantIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
 
+        // Bracket con clasificados: si el organizador pasa `participant_ids`,
+        // el cuadro se genera SOLO con esa lista (fase de eliminación directa
+        // de round-robin/liga). Se valida que todos pertenezcan al torneo y
+        // que la cantidad forme un bracket completo (potencia de 2).
+        if ($type === 'bracket' && !empty($data['participant_ids']) && is_array($data['participant_ids'])) {
+            $ids = array_values(array_filter(array_map('intval', $data['participant_ids']), fn($id) => $id > 0));
+            $invalidos = array_diff($ids, $participantIds);
+            if (!empty($invalidos)) {
+                throw new \InvalidArgumentException('Los participantes no pertenecen a este torneo');
+            }
+            if (count($ids) < 2) {
+                throw new \RuntimeException('Se necesitan al menos 2 participantes para el bracket', 409);
+            }
+            if (!TournamentRules::esBracketCompleto(count($ids))) {
+                throw new \InvalidArgumentException('El cuadro final debe ser completo: usa una potencia de 2 (2, 4, 8, 16\u2026) para que ning\u00fan equipo se quede sin jornada');
+            }
+            $participantIds = $ids;
+        }
+
         if ($type === 'bracket' && count($participantIds) < 2) {
             throw new \RuntimeException('Se necesitan al menos 2 participantes para el bracket', 409);
         }
@@ -74,7 +93,7 @@ class DrawService
                     ? $this->validateManualGroups($pdo, $tournamentId, $participantIds, $data['groups'] ?? [])
                     : BracketGenerator::assignGroups($participantIds, max(2, (int) ($data['num_groups'] ?? 2)));
                 $this->createGroups($pdo, $drawId, $groups);
-                $this->createGroupFixtures($pdo, $tournamentId, $drawId);
+                $this->createGroupFixtures($pdo, $tournamentId, $drawId, (bool) ($tournament['ida_vuelta'] ?? false));
             }
 
             $pdo->commit();
@@ -364,7 +383,7 @@ class DrawService
      * Round-robin fixtures per group as official matches (jornadas).
      * `round_number` is the jornada (per group, from 1); `match_number` is global.
      */
-    private function createGroupFixtures(PDO $pdo, int $tournamentId, int $drawId): void
+    private function createGroupFixtures(PDO $pdo, int $tournamentId, int $drawId, bool $idaVuelta = false): void
     {
         $stmt = $pdo->prepare('SELECT g.id FROM draw_groups g WHERE g.draw_id = ? ORDER BY g.position ASC');
         $stmt->execute([$drawId]);
@@ -380,7 +399,7 @@ class DrawService
             $stmt->execute([$groupId]);
             $participantIds = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'tournament_participant_id'));
 
-            foreach (BracketGenerator::generateRoundRobin($participantIds) as $m) {
+            foreach (BracketGenerator::generateRoundRobin($participantIds, $idaVuelta) as $m) {
                 $insert->execute([
                     $tournamentId,
                     $m['round_number'],

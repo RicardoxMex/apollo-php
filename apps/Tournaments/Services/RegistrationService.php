@@ -61,7 +61,22 @@ class RegistrationService
         $registrationId = (int) $pdo->lastInsertId();
         $this->audit->record($actorId, 'registration', $registrationId, 'inscripcion:solicitar', null, ['tournament_id' => $tournamentId, 'team_id' => $teamId, 'player_id' => $playerId], $request);
 
-        return $this->show($registrationId);
+        $result = $this->show($registrationId);
+
+        // Notifica al organizador (no a sí mismo).
+        if ((int) $tournament['organizer_id'] !== $actorId) {
+            $this->notify((int) $tournament['organizer_id'], 'registro.solicitado', [
+                'title' => 'Nueva solicitud de inscripción',
+                'message' => "{$result['display_name']} quiere inscribirse en «{$tournament['title']}»",
+                'data' => [
+                    'tournament_id' => (int) $tournamentId,
+                    'registration_id' => $registrationId,
+                    'slug' => $tournament['slug'] ?? null,
+                ],
+            ]);
+        }
+
+        return $result;
     }
 
     /**
@@ -103,6 +118,24 @@ class RegistrationService
             ->execute([$newStatus, $actorId, date('Y-m-d H:i:s'), date('Y-m-d H:i:s'), $registrationId]);
 
         $this->audit->record($actorId, 'registration', $registrationId, "inscripcion:{$action}", $registration, null, $request);
+
+        // Notifica al solicitante el resultado de la moderación.
+        if ((int) $registration['applicant_id'] !== $actorId) {
+            $aceptada = $action === 'accepted';
+            $this->notify((int) $registration['applicant_id'], 'registro.decidido', [
+                'title' => $aceptada ? 'Inscripción aceptada' : 'Inscripción rechazada',
+                'message' => $aceptada
+                    ? "Tu inscripción en «{$tournament['title']}» fue aceptada"
+                    : "Tu inscripción en «{$tournament['title']}» fue rechazada",
+                'data' => [
+                    'tournament_id' => (int) $tournamentId,
+                    'registration_id' => $registrationId,
+                    'accepted' => $aceptada,
+                    'slug' => $tournament['slug'] ?? null,
+                ],
+            ]);
+        }
+
         return $this->show($registrationId);
     }
 
@@ -179,6 +212,22 @@ class RegistrationService
             throw new \RuntimeException('Torneo no encontrado', 404);
         }
         return $tournament;
+    }
+
+    /**
+     * Persiste una notificación vía el core (guía websockets §13). Nunca rompe
+     * el flujo principal: un fallo de notificación solo se loguea.
+     */
+    private function notify(int $userId, string $type, array $payload): void
+    {
+        try {
+            $service = new \Apollo\Core\Realtime\Notifications\NotificationService(
+                new \Apollo\Core\Realtime\Notifications\MySqlNotificationRepository()
+            );
+            $service->sendToUser($userId, $type, $payload);
+        } catch (\Throwable $e) {
+            error_log("Notificación fallida ({$type}): " . $e->getMessage());
+        }
     }
 
     private function findRegistration(int $registrationId, int $tournamentId): array

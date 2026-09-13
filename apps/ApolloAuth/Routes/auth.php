@@ -1,8 +1,8 @@
 <?php
 
-// Rutas públicas de autenticación
-$router->post('/login', 'AuthController@login')->middleware('cors');
-$router->post('/register', 'AuthController@register')->middleware('cors');
+// Rutas públicas de autenticación (con rate limit por IP contra fuerza bruta)
+$router->post('/login', 'AuthController@login')->middleware(['cors', 'rate_limit.login']);
+$router->post('/register', 'AuthController@register')->middleware(['cors', 'rate_limit.login']);
 
 // Rutas protegidas de autenticación
 $router->group(['middleware' => ['auth', 'cors']], function ($router) {

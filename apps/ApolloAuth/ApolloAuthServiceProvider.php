@@ -3,6 +3,7 @@
 namespace Apps\ApolloAuth;
 
 use Apollo\Core\Container\ServiceProvider;
+use Apollo\Core\Middleware\RateLimitMiddleware;
 use Apps\ApolloAuth\Services\AuthService;
 use Apps\ApolloAuth\Middleware\AuthMiddleware;
 
@@ -22,6 +23,9 @@ class ApolloAuthServiceProvider extends ServiceProvider
 
         // Alias de middleware: 'auth' = JWT real de ApolloAuth
         $this->container->bind('auth', AuthMiddleware::class);
+
+        // Rate limiting en credenciales (por IP): evita fuerza bruta en login/register
+        $this->container->bind('rate_limit.login', fn() => new RateLimitMiddleware('login'));
 
         // NOTA: los gates de roles/permisos ('role.admin', 'role.user') viven en el
         // módulo de acceso del core (core/Providers/AppServiceProvider), activable

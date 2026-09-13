@@ -1,0 +1,9 @@
+{
+    "name": "notifications",
+    "version": "1.0.0",
+    "description": "User notifications REST API: list, read and read-all (core NotificationService)",
+    "author": "Sport Tournament Pro",
+    "prefix": "api/notifications",
+    "providers": [],
+    "routes": ["api.php"]
+}

@@ -73,12 +73,10 @@ class DatabaseManagerListTablesTest extends TestCase
     public function test_list_tables_excludes_sqlite_internal_tables(): void
     {
         $pdo = DatabaseManager::getConnection();
-        // SQLite crea automáticamente sqlite_sequence cuando hay AUTOINCREMENT
+        // SQLite crea automáticamente sqlite_sequence cuando hay AUTOINCREMENT:
+        // el primer INSERT sobre una tabla AUTOINCREMENT la materializa.
         $pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT)');
-
-        // Forzar creación de sqlite_sequence (normalmente SQLite la crea sola
-        // al primer INSERT; aquí la creamos explícitamente para el test).
-        $pdo->exec('CREATE TABLE sqlite_sequence (name TEXT, seq INTEGER)');
+        $pdo->exec('INSERT INTO users DEFAULT VALUES');
 
         $tables = DatabaseManager::listTables();
 

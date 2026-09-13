@@ -12,6 +12,7 @@ App modular del dominio de torneos para **Apollo Framework** (`Apps\Tournaments`
 | GET | `/api/tournaments/{id}/participants` | Participantes resueltos (equipo/jugador + `seed`) |
 | GET | `/api/tournaments/{id}/draws` | Sorteo activo: `rounds[].matches[]` (bracket) o `groups[]` |
 | GET | `/api/tournaments/{id}/matches` | Partidos oficiales con `scores` y nombres resueltos |
+| GET | `/api/uploads/{path}` | Servir archivos subidos (imágenes de equipos; path seguro, 404 si no existe) |
 
 ### Con auth (JWT)
 | Método | Ruta | Descripción |
@@ -32,6 +33,7 @@ App modular del dominio de torneos para **Apollo Framework** (`Apps\Tournaments`
 | GET/POST | `/api/players`, `/api/players/{id}`… | CRUD de jugadores |
 | GET/POST | `/api/seasons`, `/api/seasons/{id}`… | CRUD de temporadas |
 | GET | `/api/audit-logs` | Auditoría (filtros `entity_type`/`entity_id`) |
+| POST | `/api/uploads` | Subir imagen con el servicio nativo de Uploads (`multipart/form-data`, campo `file`); devuelve `{ url, path, name, size, mime }` (límites de `config/uploads.php`) |
 
 ## Convenciones
 

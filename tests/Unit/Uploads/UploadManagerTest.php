@@ -44,6 +44,12 @@ class UploadManagerTest extends TestCase
         ], $overrides));
     }
 
+    /** PNG 1x1 real: finfo lo detecta como image/png y pasa allowed_mimes. */
+    private function pngReal(): string
+    {
+        return base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+    }
+
     private function fakeFile(string $name, string $content, string $mime = 'image/png'): array
     {
         $path = $this->root . '/tmp-' . bin2hex(random_bytes(4));
@@ -60,19 +66,19 @@ class UploadManagerTest extends TestCase
 
     public function test_store_generates_unique_sanitized_name(): void
     {
-        $result = $this->manager()->store($this->fakeFile('Mi Foto (1).PNG', 'x'));
+        $result = $this->manager()->store($this->fakeFile('Mi Foto (1).PNG', $this->pngReal()));
 
         $this->assertMatchesRegularExpression('/^[0-9a-f]{16}\.png$/', $result['name']);
         $this->assertStringNotContainsString('/', $result['path']);
         $this->assertStringEndsWith('/uploads/' . $result['name'], $result['url']);
-        $this->assertSame(1, $result['size']);
+        $this->assertSame(strlen($this->pngReal()), $result['size']);
         $this->assertSame('image/png', $result['mime']);
         $this->assertFileExists($this->root . '/' . $result['path']);
     }
 
     public function test_store_into_subdirectory(): void
     {
-        $result = $this->manager()->store($this->fakeFile('a.png', 'x'), '2026/09');
+        $result = $this->manager()->store($this->fakeFile('a.png', $this->pngReal()), '2026/09');
 
         $this->assertSame('2026/09', dirname($result['path']));
         $this->assertFileExists($this->root . '/' . $result['path']);
@@ -80,7 +86,7 @@ class UploadManagerTest extends TestCase
 
     public function test_store_accepts_uploaded_file_object(): void
     {
-        $uploaded = \Apollo\Core\Uploads\Support\UploadedFile::fromArray($this->fakeFile('a.png', 'x'));
+        $uploaded = \Apollo\Core\Uploads\Support\UploadedFile::fromArray($this->fakeFile('a.png', $this->pngReal()));
 
         $result = $this->manager()->store($uploaded);
 
@@ -89,7 +95,7 @@ class UploadManagerTest extends TestCase
 
     public function test_store_as_uses_custom_name(): void
     {
-        $result = $this->manager()->storeAs($this->fakeFile('a.png', 'x'), 'docs', 'informe.pdf');
+        $result = $this->manager()->storeAs($this->fakeFile('a.png', $this->pngReal()), 'docs', 'informe.pdf');
 
         $this->assertSame('docs/informe.pdf', $result['path']);
     }
@@ -97,9 +103,9 @@ class UploadManagerTest extends TestCase
     public function test_store_as_avoids_collision_with_suffix(): void
     {
         $manager = $this->manager();
-        $manager->storeAs($this->fakeFile('a.png', 'x'), '', 'mismo.png');
+        $manager->storeAs($this->fakeFile('a.png', $this->pngReal()), '', 'mismo.png');
 
-        $second = $manager->storeAs($this->fakeFile('b.png', 'y'), '', 'mismo.png');
+        $second = $manager->storeAs($this->fakeFile('b.png', $this->pngReal()), '', 'mismo.png');
 
         $this->assertNotSame('mismo.png', $second['name']);
         $this->assertSame('mismo_1.png', $second['name']);
@@ -108,11 +114,11 @@ class UploadManagerTest extends TestCase
     public function test_store_as_overwrites_when_configured(): void
     {
         $manager = $this->manager(['overwrite' => true]);
-        $manager->storeAs($this->fakeFile('a.png', 'x'), '', 'mismo.png');
-        $second = $manager->storeAs($this->fakeFile('b.png', 'y'), '', 'mismo.png');
+        $manager->storeAs($this->fakeFile('a.png', $this->pngReal()), '', 'mismo.png');
+        $second = $manager->storeAs($this->fakeFile('b.png', $this->pngReal()), '', 'mismo.png');
 
         $this->assertSame('mismo.png', $second['name']);
-        $this->assertSame('y', $manager->get('mismo.png'));
+        $this->assertSame($this->pngReal(), $manager->get('mismo.png'));
     }
 
     public function test_store_rejects_oversized_file(): void
@@ -180,7 +186,7 @@ class UploadManagerTest extends TestCase
     public function test_delete_and_exists(): void
     {
         $manager = $this->manager();
-        $result = $manager->store($this->fakeFile('a.png', 'x'));
+        $result = $manager->store($this->fakeFile('a.png', $this->pngReal()));
 
         $this->assertTrue($manager->exists($result['path']));
         $this->assertTrue($manager->delete($result['path']));

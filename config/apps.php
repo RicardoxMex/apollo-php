@@ -14,6 +14,7 @@ return [
         'Users',
         'Products',
         'Tournaments',
+        'Notifications',
     ],
 
     /*

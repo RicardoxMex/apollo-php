@@ -3,9 +3,11 @@
 //
 // REST API of the tournaments domain (prefix: api)
 //
-// Public (explore + detail):          GET    /api/tournaments...
-// With auth (ApolloAuth JWT):         POST/PUT/DELETE /api/tournaments...
-//                                     /api/teams, /api/players, /api/seasons, /api/audit-logs
+// Public (explore + detail):   GET    /api/tournaments...
+// With auth (ApolloAuth JWT):  POST/PUT/DELETE /api/tournaments...
+//                              /api/teams, /api/players, /api/seasons, /api/audit-logs
+// Uploads:                     POST   /api/uploads (auth, servicio nativo core/Uploads)
+//                              GET    /api/uploads/{path} (público, sirve el archivo)
 //
 // Status cycle: POST /publish (draft→open), /start (open→live), /finish (live→finished)
 // Registrations: POST /{id}/registrations (apply), /{rid}/decide (moderation), /{rid}/cancel
@@ -18,7 +20,9 @@ use Apps\Tournaments\Controllers\PlayerController;
 use Apps\Tournaments\Controllers\RegistrationController;
 use Apps\Tournaments\Controllers\SeasonController;
 use Apps\Tournaments\Controllers\TeamController;
+use Apps\Tournaments\Controllers\TemplateController;
 use Apps\Tournaments\Controllers\TournamentController;
+use Apps\Tournaments\Controllers\UploadController;
 
 /** @var \Apollo\Core\Router\Router $router */
 
@@ -29,6 +33,10 @@ $router->group(['middleware' => ['cors']], function ($router) {
     $router->get('/tournaments/{id}/participants', [TournamentController::class, 'participants'])->where(['id' => '\d+'])->name('tournaments.participants');
     $router->get('/tournaments/{id}/draws', [TournamentController::class, 'draws'])->where(['id' => '\d+'])->name('tournaments.draws');
     $router->get('/tournaments/{tournamentId}/matches', [MatchController::class, 'index'])->where(['tournamentId' => '\d+'])->name('tournaments.matches');
+    // Plantilla Excel (.xlsx) para inscribir equipos/participantes
+    $router->get('/plantillas/inscripcion', [TemplateController::class, 'plantillaInscripcion'])->name('plantillas.inscripcion');
+    // Archivos subidos (imágenes de equipos): lectura pública, path seguro
+    $router->get('/uploads/{path}', [UploadController::class, 'show'])->where(['path' => '[A-Za-z0-9._/-]+'])->name('uploads.show');
 });
 
 // ─── Writes with auth (JWT) ───
@@ -50,8 +58,11 @@ $router->group(['middleware' => ['auth', 'cors']], function ($router) {
     $router->post('/tournaments/{tournamentId}/registrations/{registrationId}/decide', [RegistrationController::class, 'decide'])->where(['tournamentId' => '\d+', 'registrationId' => '\d+'])->name('registrations.decide');
     $router->post('/tournaments/{tournamentId}/registrations/{registrationId}/cancel', [RegistrationController::class, 'cancel'])->where(['tournamentId' => '\d+', 'registrationId' => '\d+'])->name('registrations.cancel');
 
-    // Matches (organizer only; tournament live)
+    // Matches (organizer only): create (jornadas/scheduling) and update
+    // (status, scores, winner; propagates to the bracket)
+    $router->post('/tournaments/{tournamentId}/matches', [MatchController::class, 'store'])->where(['tournamentId' => '\d+'])->name('matches.store');
     $router->put('/tournaments/{tournamentId}/matches/{matchId}', [MatchController::class, 'update'])->where(['tournamentId' => '\d+', 'matchId' => '\d+'])->name('matches.update');
+    $router->delete('/tournaments/{tournamentId}/matches/{matchId}', [MatchController::class, 'destroy'])->where(['tournamentId' => '\d+', 'matchId' => '\d+'])->name('matches.destroy');
 
     // Teams, players, seasons
     $router->get('/teams', [TeamController::class, 'index'])->name('teams.index');
@@ -74,4 +85,7 @@ $router->group(['middleware' => ['auth', 'cors']], function ($router) {
 
     // Audit (read only)
     $router->get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
+
+    // Uploads: subida de archivos (imágenes) con el servicio nativo de Uploads
+    $router->post('/uploads', [UploadController::class, 'store'])->name('uploads.store');
 });

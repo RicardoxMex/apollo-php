@@ -61,12 +61,14 @@ class TournamentRulesTest extends TestCase
         $this->assertContains('format', $draft);
         $this->assertContains('max_participants', $draft);
         $this->assertContains('players_per_team', $draft);
+        $this->assertContains('clasificados_eliminacion', $draft);
 
         $open = TournamentRules::editableFields('open');
         $this->assertNotContains('sport', $open);
         $this->assertNotContains('format', $open);
         $this->assertNotContains('max_participants', $open);
         $this->assertNotContains('players_per_team', $open);
+        $this->assertNotContains('clasificados_eliminacion', $open);
         $this->assertContains('title', $open);
 
         $this->assertSame([], TournamentRules::editableFields('live'));
@@ -77,6 +79,7 @@ class TournamentRulesTest extends TestCase
     {
         $filtered = TournamentRules::filterEditableFields('open', [
             'title' => 'Nuevo', 'sport' => 'Fútbol', 'format' => 'grupos', 'max_participants' => 99,
+            'clasificados_eliminacion' => 4,
         ]);
         $this->assertSame(['title' => 'Nuevo'], $filtered);
 
@@ -129,5 +132,19 @@ class TournamentRulesTest extends TestCase
         $this->assertTrue(TournamentRules::canDecide('pending', 'rejected')['ok']);
         $this->assertFalse(TournamentRules::canDecide('accepted', 'accepted')['ok']);
         $this->assertFalse(TournamentRules::canDecide('pending', 'cancel')['ok']);
+    }
+
+    public function test_es_bracket_completo_only_powers_of_two(): void
+    {
+        $this->assertTrue(TournamentRules::esBracketCompleto(0), '0 = sin fase final');
+        $this->assertTrue(TournamentRules::esBracketCompleto(2));
+        $this->assertTrue(TournamentRules::esBracketCompleto(4));
+        $this->assertTrue(TournamentRules::esBracketCompleto(8));
+        $this->assertTrue(TournamentRules::esBracketCompleto(16));
+        $this->assertFalse(TournamentRules::esBracketCompleto(1));
+        $this->assertFalse(TournamentRules::esBracketCompleto(3));
+        $this->assertFalse(TournamentRules::esBracketCompleto(5));
+        $this->assertFalse(TournamentRules::esBracketCompleto(6));
+        $this->assertFalse(TournamentRules::esBracketCompleto(12));
     }
 }

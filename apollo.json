@@ -8,7 +8,8 @@
         "ApolloAuth",
         "Users",
         "Products",
-        "Tournaments"
+        "Tournaments",
+        "Notifications"
     ],
     "api": {
         "prefix": "api",
