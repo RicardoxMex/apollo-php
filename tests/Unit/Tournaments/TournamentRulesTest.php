@@ -42,6 +42,32 @@ class TournamentRulesTest extends TestCase
         $this->assertFalse($r['ok']);
     }
 
+    public function test_start_round_robin_requires_matches_not_draw(): void
+    {
+        // round-robin / liga exigen jornadas (partidos), no draw. Acepta
+        // tanto el valor del front como el DB ENUM.
+        $r = TournamentRules::canStart(['status' => 'open', 'format' => 'round-robin', 'tiene_partidos' => false]);
+        $this->assertFalse($r['ok']);
+        $this->assertStringContainsString('jornadas', $r['reason']);
+
+        $r = TournamentRules::canStart(['status' => 'open', 'format' => 'round-robin', 'tiene_partidos' => true]);
+        $this->assertTrue($r['ok']);
+
+        $r = TournamentRules::canStart(['status' => 'open', 'format' => 'round_robin', 'tiene_partidos' => true]);
+        $this->assertTrue($r['ok']);
+
+        $r = TournamentRules::canStart(['status' => 'open', 'format' => 'liga', 'tiene_partidos' => true]);
+        $this->assertTrue($r['ok']);
+
+        $r = TournamentRules::canStart(['status' => 'open', 'format' => 'league', 'tiene_partidos' => true]);
+        $this->assertTrue($r['ok']);
+
+        // Otros formatos siguen exigiendo draw.
+        $r = TournamentRules::canStart(['status' => 'open', 'format' => 'eliminacion-directa', 'tiene_partidos' => true, 'tiene_draw' => false]);
+        $this->assertFalse($r['ok']);
+        $this->assertStringContainsString('sorteo', $r['reason']);
+    }
+
     public function test_finish_requires_final_with_winner(): void
     {
         $r = TournamentRules::canFinish(['status' => 'live', 'final_con_ganador' => false]);

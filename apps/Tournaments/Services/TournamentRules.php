@@ -29,7 +29,11 @@ class TournamentRules
     }
 
     /**
-     * Transition open → live. Requires a generated draw.
+     * Transition open → live.
+     *  - round-robin / liga: el "sorteo" es el calendario de jornadas generado
+     *    directamente (sin draw); basta con que exista al menos un partido.
+     *  - resto de formatos (eliminacion directa, doble eliminacion, grupos):
+     *    exige un draw generado.
      */
     public static function canStart(array $tournament): array
     {
@@ -37,8 +41,19 @@ class TournamentRules
             return ['ok' => false, 'reason' => 'Solo se pueden iniciar torneos abiertos a inscripciones'];
         }
 
-        if (empty($tournament['tiene_draw'])) {
-            return ['ok' => false, 'reason' => 'Genera el sorteo antes de iniciar el torneo'];
+        // Acepta tanto el valor del front (round-robin) como el del DB ENUM (round_robin),
+        // porque algunos call sites pasan el formato ya mapeado y otros no.
+        $formato = $tournament['format'] ?? '';
+        $esFormatoJornadas = in_array($formato, ['round-robin', 'round_robin', 'liga', 'league'], true);
+
+        if ($esFormatoJornadas) {
+            if (empty($tournament['tiene_partidos'])) {
+                return ['ok' => false, 'reason' => 'Genera las jornadas antes de iniciar el torneo'];
+            }
+        } else {
+            if (empty($tournament['tiene_draw'])) {
+                return ['ok' => false, 'reason' => 'Genera el sorteo antes de iniciar el torneo'];
+            }
         }
 
         return ['ok' => true];

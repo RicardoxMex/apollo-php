@@ -352,7 +352,10 @@ if ($editable === [] && $data !== []) {
         if ($action === 'publish') {
             $check = TournamentRules::canPublish($tournament + ['aceptados' => $this->countAccepted($pdo, $id)]);
         } elseif ($action === 'start') {
-            $check = TournamentRules::canStart($tournament + ['tiene_draw' => $this->hasDraw($pdo, $id)]);
+            $check = TournamentRules::canStart($tournament + [
+                'tiene_draw' => $this->hasDraw($pdo, $id),
+                'tiene_partidos' => $this->hasMatches($pdo, $id),
+            ]);
         } else {
             $check = TournamentRules::canFinish($tournament + ['final_con_ganador' => $this->hasFinalWinner($pdo, $id)]);
         }
@@ -431,6 +434,13 @@ if ($editable === [] && $data !== []) {
     private function hasDraw(PDO $pdo, int $tournamentId): bool
     {
         $stmt = $pdo->prepare('SELECT COUNT(*) AS total FROM draws WHERE tournament_id = ?');
+        $stmt->execute([$tournamentId]);
+        return ((int) $stmt->fetch(PDO::FETCH_ASSOC)['total']) > 0;
+    }
+
+    private function hasMatches(PDO $pdo, int $tournamentId): bool
+    {
+        $stmt = $pdo->prepare('SELECT COUNT(*) AS total FROM matches WHERE tournament_id = ?');
         $stmt->execute([$tournamentId]);
         return ((int) $stmt->fetch(PDO::FETCH_ASSOC)['total']) > 0;
     }
