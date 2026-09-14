@@ -67,8 +67,8 @@ class TournamentsSqliteFlowTest extends TestCase
 
     private function createUser(string $username, string $email): int
     {
-        $stmt = self::$pdo->prepare("INSERT INTO users (username, email, password, status) VALUES (?, ?, ?, 'active')");
-        $stmt->execute([$username, $email, password_hash('secret', PASSWORD_DEFAULT)]);
+        $stmt = self::$pdo->prepare("INSERT INTO users (username, email, password, status, email_verified_at) VALUES (?, ?, ?, 'active', ?)");
+        $stmt->execute([$username, $email, password_hash('secret', PASSWORD_DEFAULT), date('Y-m-d H:i:s')]);
         return (int) self::$pdo->lastInsertId();
     }
 
@@ -147,6 +147,17 @@ class TournamentsSqliteFlowTest extends TestCase
         $this->assertSame('pending', $r3['status']);
         self::$registrations->decide($organizer, $tournamentId, (int) $r3['id'], ['action' => 'accepted']);
         $this->assertCount(3, self::$tournaments->participants($tournamentId));
+
+        // 6b. El listado incluye el conteo de aceptados para las tarjetas.
+        $listado = self::$tournaments->index(['organizer_id' => $organizer], 50, 1);
+        $fila = null;
+        foreach ($listado['data'] as $t) {
+            if ((int) $t['id'] === $tournamentId) {
+                $fila = $t;
+            }
+        }
+        $this->assertNotNull($fila, 'El torneo debería aparecer en el listado del organizador');
+        $this->assertSame(3, (int) ($fila['aceptados'] ?? 0), 'El listado debe reportar el conteo de participantes aceptados');
 
         // 7. Start without draw → rejected; generate bracket (3 teams → bye) + start
         try {

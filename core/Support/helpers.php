@@ -199,6 +199,20 @@ if (!function_exists('uploads')) {
     }
 }
 
+if (!function_exists('mailer')) {
+    /**
+     * Acceso al módulo de correo (Mailer, core/Mail).
+     */
+    function mailer($abstract = null)
+    {
+        if (is_null($abstract)) {
+            return app(\Apollo\Core\Mail\Mailer::class);
+        }
+
+        return app($abstract);
+    }
+}
+
 if (!function_exists('validator')) {
     /**
      * Crear un validador de datos (core/Validation).

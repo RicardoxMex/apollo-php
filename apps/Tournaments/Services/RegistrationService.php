@@ -74,6 +74,17 @@ class RegistrationService
                     'slug' => $tournament['slug'] ?? null,
                 ],
             ]);
+
+            // Email al organizador (best-effort; el mailer nunca rompe el flujo).
+            $this->emailToUser(
+                (int) $tournament['organizer_id'],
+                'registration_request',
+                [
+                    'team' => $result['display_name'],
+                    'tournament' => $tournament['title'],
+                    'link' => $this->panelUrl($tournament),
+                ],
+            );
         }
 
         return $result;
@@ -134,6 +145,18 @@ class RegistrationService
                     'slug' => $tournament['slug'] ?? null,
                 ],
             ]);
+
+            // Email al solicitante (best-effort; el mailer nunca rompe el flujo).
+            $this->emailToUser(
+                (int) $registration['applicant_id'],
+                'registration_decision',
+                [
+                    'tournament' => $tournament['title'],
+                    'status' => $aceptada ? 'aceptada' : 'rechazada',
+                    'reason' => '',
+                    'link' => $this->panelUrl($tournament),
+                ],
+            );
         }
 
         return $this->show($registrationId);
@@ -164,7 +187,7 @@ class RegistrationService
     }
 
     /**
-     * Tournament requests (organizer only), with resolved names.
+     * Tournament requests (organizer only), with resolved names and payments.
      */
     public function list(int $tournamentId, int $actorId, ?string $status = null): array
     {
@@ -187,7 +210,30 @@ class RegistrationService
 
         $stmt = $this->pdo()->prepare($sql);
         $stmt->execute($params);
-        return $stmt->fetchAll(PDO::FETCH_ASSOC);
+        $registrations = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        // Pagos por inscripción (M4): el organizador ve el estado del pago
+        // junto a cada solicitud.
+        if ($registrations !== []) {
+            $ids = array_column($registrations, 'id');
+            $in = implode(',', array_fill(0, count($ids), '?'));
+            $stmt = $this->pdo()->prepare(
+                "SELECT id, registration_id, amount, currency, method, reference, status, paid_at, notes
+                 FROM payments WHERE registration_id IN ({$in}) ORDER BY created_at DESC"
+            );
+            $stmt->execute($ids);
+            $byRegistration = [];
+            foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $payment) {
+                $payment['amount'] = (float) $payment['amount'];
+                $byRegistration[(int) $payment['registration_id']][] = $payment;
+            }
+            foreach ($registrations as &$r) {
+                $r['payments'] = $byRegistration[(int) $r['id']] ?? [];
+            }
+            unset($r);
+        }
+
+        return $registrations;
     }
 
     public function show(int $registrationId): ?array
@@ -228,6 +274,38 @@ class RegistrationService
         } catch (\Throwable $e) {
             error_log("Notificación fallida ({$type}): " . $e->getMessage());
         }
+    }
+
+    /**
+     * Email transaccional al organizador o solicitante (EMAIL-05). Best-effort:
+     * el Mailer nunca lanza al caller; aquí además se aíslan fallos de
+     * resolución de destinatario. El nombre se resuelve del usuario.
+     */
+    private function emailToUser(int $userId, string $template, array $vars): void
+    {
+        try {
+            $stmt = $this->pdo()->prepare('SELECT email, username, first_name, last_name FROM users WHERE id = ?');
+            $stmt->execute([$userId]);
+            $user = $stmt->fetch(PDO::FETCH_ASSOC);
+            if (!$user || empty($user['email'])) {
+                return;
+            }
+
+            $name = trim(($user['first_name'] ?? '') . ' ' . ($user['last_name'] ?? ''));
+            $vars['name'] = $name !== '' ? $name : ($user['username'] ?? '');
+
+            mailer()->sendTemplate($template, $user['email'], $vars);
+        } catch (\Throwable $e) {
+            error_log("Email transaccional fallido ({$template}): " . $e->getMessage());
+        }
+    }
+
+    /** URL del panel del organizador (o detalle público del torneo). */
+    private function panelUrl(array $tournament): string
+    {
+        $frontend = rtrim((string) config('mail.frontend_url', 'http://localhost:3000'), '/');
+        $slug = $tournament['slug'] ?? null;
+        return $slug ? "{$frontend}/mis-torneos/{$slug}" : "{$frontend}/dashboard";
     }
 
     private function findRegistration(int $registrationId, int $tournamentId): array

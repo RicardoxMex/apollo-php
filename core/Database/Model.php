@@ -26,14 +26,14 @@ abstract class Model
 
     /**
      * Get database connection
+     *
+     * Delega siempre en DatabaseManager (static): el cacheo previo en
+     * self::$connection quedaba obsoleto entre conexiones (p. ej. en suites
+     * de tests con SQLite :memory: por clase) y en reconexiones.
      */
     public static function getConnection()
     {
-        if (!self::$connection) {
-            $manager = new DatabaseManager();
-            self::$connection = $manager->getConnection();
-        }
-        return self::$connection;
+        return DatabaseManager::getConnection();
     }
 
     /**

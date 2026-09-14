@@ -121,6 +121,9 @@ class MatchService
 
         $this->audit->record($actorId, 'match', $matchId, 'partido:crear', null, $data);
 
+        // Clasificación (M2): invalidar la caché al crear un partido.
+        \Apps\Tournaments\Services\StandingsService::invalidate($tournamentId);
+
         $stmt = $pdo->prepare('SELECT * FROM matches WHERE id = ?');
         $stmt->execute([$matchId]);
         $match = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -161,6 +164,9 @@ class MatchService
         $stmt->execute([$matchId]);
 
         $this->audit->record($actorId, 'match', $matchId, 'partido:eliminar', $match);
+
+        // Clasificación (M2): invalidar la caché tras eliminar un partido.
+        \Apps\Tournaments\Services\StandingsService::invalidate($tournamentId);
         return true;
     }
 
@@ -237,7 +243,10 @@ class MatchService
             $winner = $data['winner_participant_id'] ?? null;
             if ($newStatus === 'completed') {
                 $winner = $this->resolveWinner($pdo, $match, $winner);
-                if ($winner === null) {
+                // Empate válido (robin/liga): exige al menos un marcador cargado.
+                // Solo se rechaza completar sin ganador Y sin marcador.
+                $hayMarcador = !empty($data['scores']) && is_array($data['scores']);
+                if ($winner === null && !$hayMarcador) {
                     throw new \RuntimeException('Registra el ganador o un marcador que lo determine', 409);
                 }
                 $fields['winner_participant_id'] = $winner;
@@ -266,6 +275,9 @@ class MatchService
         }
 
         $this->audit->record($actorId, 'match', $matchId, "partido:$newStatus", $match, $fields, $request);
+
+        // Clasificación (M2): cualquier escritura de resultados invalida la caché.
+        \Apps\Tournaments\Services\StandingsService::invalidate($tournamentId);
 
         $stmt = $pdo->prepare('SELECT * FROM matches WHERE id = ?');
         $stmt->execute([$matchId]);

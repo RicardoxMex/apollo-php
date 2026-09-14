@@ -15,7 +15,9 @@
 // Matches:       PUT /{id}/matches/{mid} (status, scores, winner; propagates to the bracket)
 
 use Apps\Tournaments\Controllers\AuditLogController;
+use Apps\Tournaments\Controllers\AnnouncementController;
 use Apps\Tournaments\Controllers\MatchController;
+use Apps\Tournaments\Controllers\PaymentController;
 use Apps\Tournaments\Controllers\PlayerController;
 use Apps\Tournaments\Controllers\RegistrationController;
 use Apps\Tournaments\Controllers\SeasonController;
@@ -33,6 +35,10 @@ $router->group(['middleware' => ['cors']], function ($router) {
     $router->get('/tournaments/{id}/participants', [TournamentController::class, 'participants'])->where(['id' => '\d+'])->name('tournaments.participants');
     $router->get('/tournaments/{id}/draws', [TournamentController::class, 'draws'])->where(['id' => '\d+'])->name('tournaments.draws');
     $router->get('/tournaments/{tournamentId}/matches', [MatchController::class, 'index'])->where(['tournamentId' => '\d+'])->name('tournaments.matches');
+    // Clasificación (M2): tabla de posiciones calculada en servidor (fuente única)
+    $router->get('/tournaments/{id}/standings', [TournamentController::class, 'standings'])->where(['id' => '\d+'])->name('tournaments.standings');
+    // Tablón de anuncios (M6): lectura pública
+    $router->get('/tournaments/{tournamentId}/announcements', [AnnouncementController::class, 'index'])->where(['tournamentId' => '\d+'])->name('announcements.index');
     // Plantilla Excel (.xlsx) para inscribir equipos/participantes
     $router->get('/plantillas/inscripcion', [TemplateController::class, 'plantillaInscripcion'])->name('plantillas.inscripcion');
     // Archivos subidos (imágenes de equipos): lectura pública, path seguro
@@ -64,6 +70,15 @@ $router->group(['middleware' => ['auth', 'cors']], function ($router) {
     $router->put('/tournaments/{tournamentId}/matches/{matchId}', [MatchController::class, 'update'])->where(['tournamentId' => '\d+', 'matchId' => '\d+'])->name('matches.update');
     $router->delete('/tournaments/{tournamentId}/matches/{matchId}', [MatchController::class, 'destroy'])->where(['tournamentId' => '\d+', 'matchId' => '\d+'])->name('matches.destroy');
 
+    // Pagos manuales de inscripción (M4, organizador)
+    $router->post('/tournaments/{tournamentId}/payments', [PaymentController::class, 'store'])->where(['tournamentId' => '\d+'])->name('payments.store');
+    $router->get('/tournaments/{tournamentId}/payments', [PaymentController::class, 'index'])->where(['tournamentId' => '\d+'])->name('payments.index');
+    $router->delete('/tournaments/{tournamentId}/payments/{paymentId}', [PaymentController::class, 'destroy'])->where(['tournamentId' => '\d+', 'paymentId' => '\d+'])->name('payments.destroy');
+
+    // Tablón de anuncios (M6, organizador)
+    $router->post('/tournaments/{tournamentId}/announcements', [AnnouncementController::class, 'store'])->where(['tournamentId' => '\d+'])->name('announcements.store');
+    $router->delete('/tournaments/{tournamentId}/announcements/{announcementId}', [AnnouncementController::class, 'destroy'])->where(['tournamentId' => '\d+', 'announcementId' => '\d+'])->name('announcements.destroy');
+
     // Teams, players, seasons
     $router->get('/teams', [TeamController::class, 'index'])->name('teams.index');
     $router->post('/teams', [TeamController::class, 'store'])->name('teams.store');
@@ -85,6 +100,9 @@ $router->group(['middleware' => ['auth', 'cors']], function ($router) {
 
     // Audit (read only)
     $router->get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
+
+    // Historial del perfil (M3): organizados + participados + equipos
+    $router->get('/profile/history', [TournamentController::class, 'history'])->name('profile.history');
 
     // Uploads: subida de archivos (imágenes) con el servicio nativo de Uploads
     $router->post('/uploads', [UploadController::class, 'store'])->name('uploads.store');

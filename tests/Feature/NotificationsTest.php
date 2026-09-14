@@ -34,6 +34,14 @@ class NotificationsTest extends TestCase
         new \Apollo\Core\Application(dirname(__DIR__, 2));
         \app('config');
 
+        // Registra los core providers como en public/index.php (mailer, realtime…).
+        foreach (\app('config')->get('providers.core', []) as $providerClass) {
+            if (class_exists($providerClass)) {
+                \app()->registerServiceProvider(new $providerClass(\app()));
+            }
+        }
+        \app()->bootServiceProviders();
+
         DatabaseManager::setConfig([
             'connection' => 'sqlite',
             'driver' => 'sqlite',
@@ -58,8 +66,8 @@ class NotificationsTest extends TestCase
 
     private function createUser(string $username, string $email): int
     {
-        $stmt = self::$pdo->prepare("INSERT INTO users (username, email, password, status) VALUES (?, ?, ?, 'active')");
-        $stmt->execute([$username, $email, password_hash('secret', PASSWORD_DEFAULT)]);
+        $stmt = self::$pdo->prepare("INSERT INTO users (username, email, password, status, email_verified_at) VALUES (?, ?, ?, 'active', ?)");
+        $stmt->execute([$username, $email, password_hash('secret', PASSWORD_DEFAULT), date('Y-m-d H:i:s')]);
         return (int) self::$pdo->lastInsertId();
     }
 
@@ -108,5 +116,59 @@ class NotificationsTest extends TestCase
         // El organizador NO se auto-notifica su propia inscripción directa
         self::$registrations->apply($organizer, $tournamentId, ['team_id' => (int) $team['id']]);
         $this->assertCount(1, $this->notificaciones($organizer), 'El organizador no recibe notificación de su propia solicitud');
+    }
+
+    public function test_inscripcion_envia_emails_transaccionales(): void
+    {
+        $organizer = $this->createUser('orgmail', 'orgmail@notif.test');
+        $applicant = $this->createUser('jugmail', 'jugmail@notif.test');
+
+        $team = self::$teams->create($organizer, ['name' => 'Alpha FC']);
+        $team2 = self::$teams->create($organizer, ['name' => 'Beta FC']);
+
+        $tournament = self::$tournaments->create($organizer, [
+            'title' => 'Copa Emails',
+            'format' => 'eliminacion-directa',
+            'max_participants' => 8,
+            'visibility' => 'publico',
+        ]);
+        $tournamentId = (int) $tournament['id'];
+        self::$tournaments->transition($organizer, $tournamentId, 'publish');
+
+        $mailDir = dirname(__DIR__, 2) . '/runtime/logs/mail';
+
+        // Solicitud → email al organizador (con el nombre del equipo).
+        $r = self::$registrations->apply($applicant, $tournamentId, ['team_id' => (int) $team2['id']]);
+        $emailOrg = $this->ultimoEmailCon($mailDir, 'orgmail@notif.test');
+        $this->assertNotNull($emailOrg, 'Email al organizador por solicitud');
+        $body = (string) file_get_contents($emailOrg);
+        $this->assertStringContainsString('Nueva solicitud de inscripción', $body);
+        $this->assertStringContainsString('Beta FC', $body);
+        $this->assertStringContainsString('Copa Emails', $body);
+
+        // Decisión → email al solicitante.
+        self::$registrations->decide($organizer, $tournamentId, (int) $r['id'], ['action' => 'accepted']);
+        $emailApp = $this->ultimoEmailCon($mailDir, 'jugmail@notif.test');
+        $this->assertNotNull($emailApp, 'Email al solicitante por decisión');
+        $body = (string) file_get_contents($emailApp);
+        $this->assertStringContainsString('aceptada', $body);
+        $this->assertStringContainsString('Copa Emails', $body);
+    }
+
+    /**
+     * Último email (por mtime) del directorio de logs que contenga el texto.
+     * Los tests comparten runtime/logs/mail: la búsqueda por contenido evita
+     * depender del orden/agregación de archivos de otras suites.
+     */
+    private function ultimoEmailCon(string $mailDir, string $texto): ?string
+    {
+        $files = glob($mailDir . '/*.html') ?: [];
+        usort($files, fn($a, $b) => (filemtime($b) ?: 0) <=> (filemtime($a) ?: 0));
+        foreach ($files as $file) {
+            if (str_contains((string) file_get_contents($file), $texto)) {
+                return $file;
+            }
+        }
+        return null;
     }
 }

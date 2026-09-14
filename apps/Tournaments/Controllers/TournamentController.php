@@ -165,6 +165,8 @@ class TournamentController extends Controller
             return $this->json(['success' => true, 'data' => $tournament, 'message' => "Torneo {$action}ado"]);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
+        } catch (\Apps\ApolloAuth\Exceptions\EmailNotVerifiedException $e) {
+            return $this->json(['error' => $e->getMessage(), 'code' => $e->businessCode()], 403);
         } catch (\RuntimeException $e) {
             return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 409);
         } catch (\Throwable $e) {
@@ -181,6 +183,21 @@ class TournamentController extends Controller
         }
     }
 
+    /**
+     * Clasificación en servidor (M2): GET /tournaments/{id}/standings (público).
+     */
+    public function standings($id)
+    {
+        try {
+            $standings = (new \Apps\Tournaments\Services\StandingsService())->compute((int) $id);
+            return $this->json(['success' => true, 'data' => $standings]);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 404);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => 'No se pudo calcular la clasificación', 'message' => $e->getMessage()], 500);
+        }
+    }
+
     public function registrations($tournamentId)
     {
         try {
@@ -192,6 +209,20 @@ class TournamentController extends Controller
             return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudieron listar las solicitudes', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Historial del perfil (M3): torneos organizados, participados y equipos.
+     * GET /profile/history (auth).
+     */
+    public function history()
+    {
+        try {
+            $history = (new \Apps\Tournaments\Services\ProfileHistoryService())->history($this->actorId());
+            return $this->json(['success' => true, 'data' => $history]);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => 'No se pudo cargar el historial', 'message' => $e->getMessage()], 500);
         }
     }
 
