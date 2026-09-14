@@ -2,35 +2,20 @@
 
 namespace Tests\Feature\Realtime;
 
-use Apollo\Core\Database\Connection\DatabaseManager;
 use Apollo\Core\Realtime\Notifications\MySqlNotificationRepository;
-use PHPUnit\Framework\TestCase;
+use Tests\SqliteTestCase;
 use PDO;
 
 /**
  * Repositorio de notificaciones sobre SQLite :memory: (esquema de la 009).
  */
-class NotificationRepositoryTest extends TestCase
+class NotificationRepositoryTest extends SqliteTestCase
 {
-    private static ?PDO $pdo = null;
     private MySqlNotificationRepository $repo;
 
     public static function setUpBeforeClass(): void
     {
-        if (!extension_loaded('pdo_sqlite')) {
-            self::markTestSkipped('pdo_sqlite requerido para la prueba de persistencia');
-        }
-
-        DatabaseManager::setConfig([
-            'connection' => 'sqlite',
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-        ]);
-
-        // BD fresca por clase
-        DatabaseManager::disconnect();
-
-        self::$pdo = DatabaseManager::getConnection();
+        parent::setUpBeforeClass();
 
         self::$pdo->exec(<<<'SQL'
 CREATE TABLE `notifications` (

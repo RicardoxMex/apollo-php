@@ -128,7 +128,9 @@ class UploadedFileTest extends TestCase
             $manager
         );
 
-        $file = UploadedFile::fromArray($this->fakeFile('logo.png', 'data'));
+        // Contenido PNG real: el sniff con finfo debe coincidir con el MIME declarado
+        $png = base64_decode('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg==');
+        $file = UploadedFile::fromArray($this->fakeFile('logo.png', $png));
 
         $result = $file->store('img');
         $this->assertSame('img', dirname($result['path']));

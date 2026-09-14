@@ -11,7 +11,9 @@ class QueryBuilder {
     private array $queryParts = [
         'select' => '*',
         'from' => '',
+        'join' => [],
         'where' => [],
+        'group' => '',
         'order' => '',
         'limit' => '',
         'offset' => ''
@@ -84,7 +86,54 @@ class QueryBuilder {
         $this->queryParts['where'][] = "{$prefix}{$column} IN (" . implode(', ', $placeholders) . ")";
         return $this;
     }
+
+    /**
+     * JOIN (tipos validados contra una lista blanca para evitar inyección).
+     */
+    public function join(string $table, string $first, string $operator = '=', string $second = '', string $type = 'INNER'): self {
+        $type = strtoupper(trim($type));
+
+        $allowed = ['INNER', 'LEFT', 'LEFT OUTER', 'RIGHT', 'RIGHT OUTER', 'FULL OUTER', 'CROSS'];
+        if (!in_array($type, $allowed, true)) {
+            throw new \InvalidArgumentException("Tipo de JOIN no permitido: {$type}");
+        }
+
+        $this->queryParts['join'][] = "{$type} JOIN {$table} ON {$first} {$operator} {$second}";
+        return $this;
+    }
+
+    public function leftJoin(string $table, string $first, string $operator = '=', string $second = ''): self {
+        return $this->join($table, $first, $operator, $second, 'LEFT');
+    }
+
+    public function rightJoin(string $table, string $first, string $operator = '=', string $second = ''): self {
+        return $this->join($table, $first, $operator, $second, 'RIGHT');
+    }
+
+    /**
+     * GROUP BY acumulativo (varias llamadas se concatenan).
+     */
+    public function groupBy($columns): self {
+        $cols = is_array($columns) ? implode(', ', $columns) : $columns;
+
+        $this->queryParts['group'] = !empty($this->queryParts['group'])
+            ? $this->queryParts['group'] . ', ' . $cols
+            : "GROUP BY {$cols}";
+        return $this;
+    }
     
+    public function whereNotNull(string $column): self {
+        $prefix = empty($this->queryParts['where']) ? '' : 'AND ';
+        $this->queryParts['where'][] = "{$prefix}{$column} IS NOT NULL";
+        return $this;
+    }
+
+    public function whereNull(string $column): self {
+        $prefix = empty($this->queryParts['where']) ? '' : 'AND ';
+        $this->queryParts['where'][] = "{$prefix}{$column} IS NULL";
+        return $this;
+    }
+
     public function orderBy(string $column, string $direction = 'ASC'): self {
         $direction = strtoupper($direction) === 'DESC' ? 'DESC' : 'ASC';
         $order = "{$column} {$direction}";
@@ -108,6 +157,10 @@ class QueryBuilder {
     private function buildQuery(): string {
         $sql = "SELECT {$this->queryParts['select']} FROM {$this->queryParts['from']}";
         
+        foreach ($this->queryParts['join'] as $join) {
+            $sql .= " {$join}";
+        }
+        
         if (!empty($this->queryParts['where'])) {
             $whereClause = implode(' ', $this->queryParts['where']);
             // Si el primer where empieza con OR, lo convertimos a WHERE normal
@@ -115,6 +168,10 @@ class QueryBuilder {
                 $whereClause = substr($whereClause, 3);
             }
             $sql .= " WHERE {$whereClause}";
+        }
+        
+        if ($this->queryParts['group']) {
+            $sql .= " {$this->queryParts['group']}";
         }
         
         if ($this->queryParts['order']) {
@@ -162,9 +219,22 @@ class QueryBuilder {
     }
     
     public function count(): int {
-        // Create a separate count query without affecting current query parts
+        // Con GROUP BY el COUNT debe envolver la consulta agregada en una subconsulta
+        if ($this->queryParts['group']) {
+            $stmt = $this->pdo->prepare("SELECT COUNT(*) AS total FROM ({$this->buildQuery()}) AS _aggregated");
+            $stmt->execute($this->bindings);
+            $result = $stmt->fetch();
+            $this->reset();
+
+            return (int) ($result['total'] ?? 0);
+        }
+
         $sql = "SELECT COUNT(*) as total FROM {$this->queryParts['from']}";
-        
+
+        foreach ($this->queryParts['join'] as $join) {
+            $sql .= " {$join}";
+        }
+
         if (!empty($this->queryParts['where'])) {
             $whereClause = implode(' ', $this->queryParts['where']);
             // Si el primer where empieza con OR, lo convertimos a WHERE normal
@@ -173,11 +243,12 @@ class QueryBuilder {
             }
             $sql .= " WHERE {$whereClause}";
         }
-        
+
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($this->bindings);
         $result = $stmt->fetch();
-        
+        $this->reset();
+
         return (int) ($result['total'] ?? 0);
     }
     
@@ -242,7 +313,9 @@ class QueryBuilder {
         $this->queryParts = [
             'select' => '*',
             'from' => '',
+            'join' => [],
             'where' => [],
+            'group' => '',
             'order' => '',
             'limit' => '',
             'offset' => ''
