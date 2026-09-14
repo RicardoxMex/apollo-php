@@ -13,6 +13,7 @@ return [
         \Apollo\Core\Providers\AppServiceProvider::class,
         \Apollo\Core\Providers\RealtimeServiceProvider::class,
         \Apollo\Core\Providers\UploadsServiceProvider::class,
+        \Apollo\Core\Providers\MailServiceProvider::class,
     ],
 
     /*

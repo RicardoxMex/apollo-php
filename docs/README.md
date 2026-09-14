@@ -15,6 +15,8 @@ Bienvenido a la documentación oficial de Apollo Framework, un mini-framework PH
 - [**WebSockets (Workerman)**](websockets.md) - Notificaciones en tiempo real, autenticación JWT, SDK JS y guía de integración REST (en el **core** del framework)
 - [**Módulo Realtime**](realtime.md) - Resumen del módulo de tiempo real: EventBus, canales, NotificationService (en el **core**)
 - [**Módulo Uploads**](uploads.md) - Subida y descarga de archivos (opcional)
+- [**Módulo Mail**](mail.md) - Envío de correos: SMTP/log, plantillas y verificación de email (opcional)
+- [**Migraciones**](migrations.md) - Crear, aplicar y deshacer migraciones (`migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status`)
 
 ### Próximamente
 - Creación de APIs REST (paso a paso)
