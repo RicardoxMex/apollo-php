@@ -56,6 +56,7 @@ try {
             echo "Ejecutando migración: " . basename($file) . "\n";
             $migration = require $file;
             $migration->up();
+            \Apollo\Core\Database\Migrator::record($pdo, basename($file), now());
             echo "✓ " . basename($file) . " ejecutada\n";
         } else {
             echo "⚠️  Archivo de migración no encontrado: $file\n";

@@ -68,6 +68,12 @@ php apollo db:setup        # drop de todas las tablas + correr migraciones (migr
 php apollo db:seed         # correr todos los seeders de database/seeds
 php apollo db:refresh      # db:setup + db:seed (migrate:fresh --seed)
 
+# Migraciones (tracking por batch en la tabla `migrations`)
+php apollo migrate              # aplicar SOLO las pendientes (no destructivo)
+php apollo migrate:rollback     # deshacer el último batch (down())
+php apollo migrate:reset        # deshacer todos los batches (down())
+php apollo migrate:status       # lista aplicadas vs pendientes
+
 # Ejecutar self-check del framework (sin DB)
 php apollo test
 

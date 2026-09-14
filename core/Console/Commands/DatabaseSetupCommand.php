@@ -45,6 +45,7 @@ class DatabaseSetupCommand extends Command
                 $this->line('  Running: ' . basename($file));
                 $migration = require $file;
                 $migration->up();
+                \Apollo\Core\Database\Migrator::record($pdo, basename($file), now());
                 $this->info('  ✓ ' . basename($file) . ' executed');
             }
 
