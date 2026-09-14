@@ -114,38 +114,17 @@ if (!function_exists('route')) {
     }
 }
 
-if (!function_exists('env')) {
-    function env($key, $default = null)
+if (!function_exists('now')) {
+    /**
+     * Timestamp actual en formato de base de datos (Y-m-d H:i:s).
+     * Vive en el core para que los modelos funcionen sin bootear la app
+     * (antes solo existía tras cargar apps/<app>/helpers.php).
+     */
+    function now(): string
     {
-        $value = $_ENV[$key] ?? $_SERVER[$key] ?? getenv($key);
-
-        if ($value === false) {
-            return $default;
-        }
-
-        switch (strtolower($value)) {
-            case 'true':
-            case '(true)':
-                return true;
-            case 'false':
-            case '(false)':
-                return false;
-            case 'empty':
-            case '(empty)':
-                return '';
-            case 'null':
-            case '(null)':
-                return null;
-        }
-
-        if (str_starts_with($value, '"') && str_ends_with($value, '"')) {
-            return substr($value, 1, -1);
-        }
-
-        return $value;
+        return date('Y-m-d H:i:s');
     }
 }
-
 
 if (!function_exists('request')) {
     /**

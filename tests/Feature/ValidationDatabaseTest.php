@@ -5,32 +5,18 @@ namespace Tests\Feature;
 use Apollo\Core\Database\Connection\DatabaseManager;
 use Apollo\Core\Validation\Validator;
 use InvalidArgumentException;
-use PHPUnit\Framework\TestCase;
+use Tests\SqliteTestCase;
 use PDO;
 
 /**
  * Reglas de validación respaldadas por base de datos (unique/exists) sobre
  * SQLite :memory:. Requiere extension=pdo_sqlite (se omite si no está cargada).
  */
-class ValidationDatabaseTest extends TestCase
+class ValidationDatabaseTest extends SqliteTestCase
 {
-    private static ?PDO $pdo = null;
-
     public static function setUpBeforeClass(): void
     {
-        if (!extension_loaded('pdo_sqlite')) {
-            self::markTestSkipped('pdo_sqlite no disponible: habilita extension=pdo_sqlite en php.ini');
-        }
-
-        DatabaseManager::setConfig([
-            'connection' => 'sqlite',
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-        ]);
-
-        // BD fresca (evita tablas de otros tests con la misma config :memory:)
-        DatabaseManager::disconnect();
-        self::$pdo = DatabaseManager::getConnection();
+        parent::setUpBeforeClass();
 
         self::$pdo->exec(
             'CREATE TABLE validation_users (

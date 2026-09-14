@@ -43,10 +43,9 @@ class SmtpTransport implements Transport
             }
 
             if ($this->username !== '') {
-                // AUTH LOGIN: 334 "Username:" → 334 "Password:" → 235 OK.
-                $this->command($socket, 'AUTH LOGIN', [334]);
-                $this->command($socket, base64_encode($this->username), [334]);
-                $this->command($socket, base64_encode($this->password), [235]);
+                $this->command($socket, 'AUTH LOGIN');
+                $this->command($socket, base64_encode($this->username));
+                $this->command($socket, base64_encode($this->password));
             }
 
             $from = $this->fromOf($message)[0];
@@ -55,7 +54,7 @@ class SmtpTransport implements Transport
             $this->command($socket, 'DATA');
             $this->writeData($socket, $message);
             $this->expect($socket, [250]);
-            $this->command($socket, 'QUIT', [221]); // RFC 5321: QUIT → 221
+            $this->command($socket, 'QUIT');
 
             return true;
         } finally {
@@ -91,10 +90,10 @@ class SmtpTransport implements Transport
     }
 
     /** @param resource $socket */
-    private function command($socket, string $line, array $expected = []): void
+    private function command($socket, string $line): void
     {
         fwrite($socket, $line . "\r\n");
-        $this->expect($socket, $expected !== [] ? $expected : ($line === 'DATA' ? [354] : [250]));
+        $this->expect($socket, $line === 'DATA' ? [354] : [250]);
     }
 
     /** @param resource $socket */

@@ -15,6 +15,8 @@ Bienvenido a la documentación oficial de Apollo Framework, un mini-framework PH
 - [**WebSockets (Workerman)**](websockets.md) - Notificaciones en tiempo real, autenticación JWT, SDK JS y guía de integración REST (en el **core** del framework)
 - [**Módulo Realtime**](realtime.md) - Resumen del módulo de tiempo real: EventBus, canales, NotificationService (en el **core**)
 - [**Módulo Uploads**](uploads.md) - Subida y descarga de archivos (opcional)
+- [**Módulo Mail**](mail.md) - Envío de correos: SMTP/log, plantillas y verificación de email (opcional)
+- [**Migraciones**](migrations.md) - Crear, aplicar y deshacer migraciones (`migrate`, `migrate:rollback`, `migrate:reset`, `migrate:status`)
 
 ### Próximamente
 - Creación de APIs REST (paso a paso)
@@ -65,6 +67,12 @@ php apollo system:report
 php apollo db:setup        # drop de todas las tablas + correr migraciones (migrate:fresh)
 php apollo db:seed         # correr todos los seeders de database/seeds
 php apollo db:refresh      # db:setup + db:seed (migrate:fresh --seed)
+
+# Migraciones (tracking por batch en la tabla `migrations`)
+php apollo migrate              # aplicar SOLO las pendientes (no destructivo)
+php apollo migrate:rollback     # deshacer el último batch (down())
+php apollo migrate:reset        # deshacer todos los batches (down())
+php apollo migrate:status       # lista aplicadas vs pendientes
 
 # Ejecutar self-check del framework (sin DB)
 php apollo test

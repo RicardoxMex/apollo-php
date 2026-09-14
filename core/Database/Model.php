@@ -16,8 +16,6 @@ abstract class Model
     public $attributes = [];
     public $original = [];
     public $exists = false;
-    
-    private static $connection;
 
     public function __construct(array $attributes = [])
     {
@@ -25,11 +23,9 @@ abstract class Model
     }
 
     /**
-     * Get database connection
-     *
-     * Delega siempre en DatabaseManager (static): el cacheo previo en
-     * self::$connection quedaba obsoleto entre conexiones (p. ej. en suites
-     * de tests con SQLite :memory: por clase) y en reconexiones.
+     * Get database connection (delegado a DatabaseManager: NUNCA cachear el
+     * PDO aquí — una caché estática queda obsoleta al cambiar de conexión y
+     * rompe el aislamiento entre tests y las reconexiones).
      */
     public static function getConnection()
     {
@@ -299,10 +295,10 @@ abstract class Model
         
         // Add timestamps
         if (in_array('created_at', $this->fillable) || empty($this->fillable)) {
-            $attributes['created_at'] = date('Y-m-d H:i:s');
+            $attributes['created_at'] = now();
         }
         if (in_array('updated_at', $this->fillable) || empty($this->fillable)) {
-            $attributes['updated_at'] = date('Y-m-d H:i:s');
+            $attributes['updated_at'] = now();
         }
 
         $id = static::query()->insert($attributes);
@@ -330,7 +326,7 @@ abstract class Model
 
         // Add updated_at timestamp
         if (in_array('updated_at', $this->fillable) || empty($this->fillable)) {
-            $attributes['updated_at'] = date('Y-m-d H:i:s');
+            $attributes['updated_at'] = now();
         }
 
         $attributes = $this->prepareAttributesForDatabase($attributes);

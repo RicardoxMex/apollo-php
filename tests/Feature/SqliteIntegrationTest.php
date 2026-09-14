@@ -8,49 +8,19 @@ use Apollo\Core\Database\Connection\DatabaseManager;
 use Apollo\Core\Database\Model;
 use Apollo\Core\Database\QueryBuilder;
 use Apps\ApolloAuth\Models\User;
-use PHPUnit\Framework\TestCase;
 use PDO;
+use Tests\SqliteTestCase;
 
 /**
  * Integración real sobre SQLite :memory: — valida migraciones (DLE con
  * FKs/unique), modelos del módulo de acceso y pivotes, sin necesidad de MySQL.
  * Requiere extension=pdo_sqlite (se omite automáticamente si no está cargada).
  */
-class SqliteIntegrationTest extends TestCase
+class SqliteIntegrationTest extends SqliteTestCase
 {
-    private static ?PDO $pdo = null;
-
-    public static function setUpBeforeClass(): void
+    protected static function migrarBD(): bool
     {
-        if (!extension_loaded('pdo_sqlite')) {
-            self::markTestSkipped('pdo_sqlite no disponible: habilita extension=pdo_sqlite en php.ini');
-        }
-
-        // Aislar del estado global: bootear config (sin providers para no pisar la config sqlite)
-        new \Apollo\Core\Application(dirname(__DIR__, 2));
-        \app('config');
-
-        // Helpers de la app (now() para los pivots) sin bootear providers
-        require_once dirname(__DIR__, 2) . '/apps/ApolloAuth/helpers.php';
-
-        DatabaseManager::setConfig([
-            'connection' => 'sqlite',
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-        ]);
-
-        // BD fresca (evita tablas de otros tests con la misma config :memory:)
-        DatabaseManager::disconnect();
-
-        self::$pdo = DatabaseManager::getConnection();
-
-        $files = glob(dirname(__DIR__, 2) . '/database/migrations/*.php');
-        sort($files);
-
-        foreach ($files as $file) {
-            $migration = require $file;
-            $migration->up();
-        }
+        return true;
     }
 
     public function test_migrations_create_all_tables(): void

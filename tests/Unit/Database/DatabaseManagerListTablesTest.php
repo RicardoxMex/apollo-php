@@ -2,9 +2,8 @@
 
 namespace Tests\Unit\Database;
 
-use Apollo\Core\Application;
 use Apollo\Core\Database\Connection\DatabaseManager;
-use PHPUnit\Framework\TestCase;
+use Tests\SqliteTestCase;
 
 /**
  * Verifica que DatabaseManager::listTables() es driver-aware y devuelve los
@@ -16,39 +15,20 @@ use PHPUnit\Framework\TestCase;
  *
  * Fix: usar fetchColumn(0) y centralizar la lógica en DatabaseManager::listTables().
  */
-class DatabaseManagerListTablesTest extends TestCase
+class DatabaseManagerListTablesTest extends SqliteTestCase
 {
-    private static ?Application $app = null;
+    protected static function sqliteFreshPerTest(): bool
+    {
+        return true;
+    }
 
     public static function setUpBeforeClass(): void
     {
-        if (!extension_loaded('pdo_sqlite')) {
-            self::markTestSkipped('pdo_sqlite requerido para listTables()');
-        }
-
         $_ENV['APP_DEBUG'] = false;
         $_ENV['JWT_SECRET_KEY'] = 'unit-test-secret-0123456789abcdef';
         $_ENV['JWT_ALGORITHM'] = 'HS256';
 
-        self::$app = new Application(dirname(__DIR__, 2));
-        self::$app->make('config');
-    }
-
-    protected function setUp(): void
-    {
-        // BD fresca por test
-        DatabaseManager::setConfig([
-            'connection' => 'sqlite',
-            'driver' => 'sqlite',
-            'database' => ':memory:',
-            'host' => '',
-            'port' => 0,
-            'username' => '',
-            'password' => '',
-            'charset' => '',
-            'collation' => '',
-        ]);
-        DatabaseManager::disconnect();
+        parent::setUpBeforeClass();
     }
 
     public function test_list_tables_returns_empty_when_no_tables(): void
@@ -73,9 +53,11 @@ class DatabaseManagerListTablesTest extends TestCase
     public function test_list_tables_excludes_sqlite_internal_tables(): void
     {
         $pdo = DatabaseManager::getConnection();
-        // SQLite crea automáticamente sqlite_sequence cuando hay AUTOINCREMENT:
-        // el primer INSERT sobre una tabla AUTOINCREMENT la materializa.
+        // SQLite crea automáticamente sqlite_sequence cuando hay AUTOINCREMENT
+        // (el nombre está reservado: CREATE TABLE sqlite_* falla en SQLite >= 3.22)
         $pdo->exec('CREATE TABLE users (id INTEGER PRIMARY KEY AUTOINCREMENT)');
+
+        // El primer INSERT dispara la creación de sqlite_sequence
         $pdo->exec('INSERT INTO users DEFAULT VALUES');
 
         $tables = DatabaseManager::listTables();
