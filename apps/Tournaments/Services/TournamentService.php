@@ -22,14 +22,42 @@ class TournamentService
     {
         $filters['visibility'] = Mappings::visibilityFromApi($filters['visibility'] ?? null) ?? $filters['visibility'] ?? null;
         $result = $this->tournaments->filter($filters, $perPage, $page);
+        $aceptados = $this->countAceptadosPorTorneo(array_column($result['data'], 'id'));
 
         foreach ($result['data'] as &$t) {
             $t['format'] = Mappings::formatToApi($t['format'] ?? null);
             $t['visibility'] = Mappings::visibilityToApi($t['visibility'] ?? null);
             $t['deleted_at'] = null; // the repository does not expose soft-delete in the public listing
+            $t['aceptados'] = (int) ($aceptados[(int) $t['id']] ?? 0);
         }
 
         return $result;
+    }
+
+    /**
+     * Conteo de inscripciones aceptadas para varios torneos en una sola consulta
+     * (evita N+1 al enriquecer el listado). Devuelve [tournament_id => total].
+     */
+    private function countAceptadosPorTorneo(array $tournamentIds): array
+    {
+        $tournamentIds = array_values(array_unique(array_filter(array_map('intval', $tournamentIds), static fn ($id) => $id > 0)));
+        if ($tournamentIds === []) {
+            return [];
+        }
+
+        $pdo = DatabaseManager::getConnection();
+        $placeholders = implode(', ', array_fill(0, count($tournamentIds), '?'));
+        $stmt = $pdo->prepare("SELECT tournament_id, COUNT(*) AS total
+            FROM tournament_registrations
+            WHERE status = 'accepted' AND tournament_id IN ({$placeholders})
+            GROUP BY tournament_id");
+        $stmt->execute($tournamentIds);
+
+        $out = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $row) {
+            $out[(int) $row['tournament_id']] = (int) $row['total'];
+        }
+        return $out;
     }
 
     /**

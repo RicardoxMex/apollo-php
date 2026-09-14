@@ -224,7 +224,6 @@ class QueryBuilder {
             $stmt = $this->pdo->prepare("SELECT COUNT(*) AS total FROM ({$this->buildQuery()}) AS _aggregated");
             $stmt->execute($this->bindings);
             $result = $stmt->fetch();
-            $this->reset();
 
             return (int) ($result['total'] ?? 0);
         }
@@ -247,7 +246,6 @@ class QueryBuilder {
         $stmt = $this->pdo->prepare($sql);
         $stmt->execute($this->bindings);
         $result = $stmt->fetch();
-        $this->reset();
 
         return (int) ($result['total'] ?? 0);
     }
