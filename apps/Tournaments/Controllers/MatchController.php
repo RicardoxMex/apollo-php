@@ -31,6 +31,7 @@ class MatchController extends Controller
                 'participant_a_id'  => 'sometimes|nullable|integer|min:1',
                 'participant_b_id'  => 'sometimes|nullable|integer|min:1',
                 'status'            => 'sometimes|in:pending,scheduled,live',
+                'scheduled_at'      => 'sometimes|nullable|date',
                 'label'             => 'sometimes|nullable|string|max:255',
             ]);
             $match = $this->matches->create($this->actorId(), (int) $tournamentId, $data);

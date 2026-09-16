@@ -377,4 +377,75 @@ class TournamentsSqliteFlowTest extends TestCase
         $this->assertSame('Goles', $copy['stats'][0]['label']);
         $this->assertSame([], self::$tournaments->participants((int) $copy['id']));
     }
+
+    /**
+     * Programación manual: sin fecha no hay Programado ni En vivo; con fecha,
+     * un partido pendiente se guarda como Programado y la fecha persiste.
+     */
+    public function test_match_scheduling_rules(): void
+    {
+        $organizer = $this->createUser('org-sched', 'sched@test.local');
+        $teams = $this->createTeams($organizer, ['Prog A', 'Prog B']);
+
+        $tournament = self::$tournaments->create($organizer, [
+            'title' => 'Liga Programación', 'format' => 'liga', 'max_participants' => 8,
+        ]);
+        $this->applyAndAccept($organizer, (int) $tournament['id'], $teams);
+        $participants = self::$tournaments->participants((int) $tournament['id']);
+        $pidA = (int) $participants[0]['id'];
+        $pidB = (int) $participants[1]['id'];
+
+        // Programar sin fecha → rechazado.
+        try {
+            self::$matches->create($organizer, (int) $tournament['id'], [
+                'participant_a_id' => $pidA, 'participant_b_id' => $pidB, 'status' => 'scheduled',
+            ]);
+            $this->fail('scheduled sin fecha debe rechazarse');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('fecha', $e->getMessage());
+        }
+
+        // Iniciar sin fecha → rechazado.
+        try {
+            self::$matches->create($organizer, (int) $tournament['id'], [
+                'participant_a_id' => $pidA, 'participant_b_id' => $pidB, 'status' => 'live',
+            ]);
+            $this->fail('live sin fecha debe rechazarse');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('fecha', $e->getMessage());
+        }
+
+        // Pendiente + fecha → Programado, con la fecha persistida.
+        $match = self::$matches->create($organizer, (int) $tournament['id'], [
+            'participant_a_id' => $pidA,
+            'participant_b_id' => $pidB,
+            'status' => 'pending',
+            'scheduled_at' => '2026-09-20 18:00:00',
+        ]);
+        $this->assertSame('scheduled', $match['status']);
+        $this->assertSame('2026-09-20 18:00:00', $match['scheduled_at']);
+
+        // Iniciar quitando la fecha → rechazado.
+        try {
+            self::$matches->update($organizer, (int) $tournament['id'], (int) $match['id'], [
+                'status' => 'live', 'scheduled_at' => null,
+            ]);
+            $this->fail('live sin fecha debe rechazarse');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('fecha', $e->getMessage());
+        }
+
+        // Programado → En vivo con fecha → OK.
+        $live = self::$matches->update($organizer, (int) $tournament['id'], (int) $match['id'], [
+            'status' => 'live', 'scheduled_at' => '2026-09-20 18:00:00',
+        ]);
+        $this->assertSame('live', $live['status']);
+
+        // Quitar la fecha vuelve a Pendiente y limpia scheduled_at.
+        $pending = self::$matches->update($organizer, (int) $tournament['id'], (int) $match['id'], [
+            'status' => 'pending', 'scheduled_at' => null,
+        ]);
+        $this->assertSame('pending', $pending['status']);
+        $this->assertNull($pending['scheduled_at']);
+    }
 }

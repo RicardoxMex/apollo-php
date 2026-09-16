@@ -79,6 +79,19 @@ class MatchService
         if (!in_array($status, ['pending', 'scheduled', 'live'], true)) {
             throw new \InvalidArgumentException('Estado de partido inválido');
         }
+        // Programación manual: sin fecha no hay programado ni en vivo; un
+        // partido pendiente con fecha se guarda como programado.
+        $scheduledAt = isset($data['scheduled_at']) && $data['scheduled_at'] !== '' && $data['scheduled_at'] !== null
+            ? (string) $data['scheduled_at']
+            : null;
+        if ($scheduledAt !== null && $status === 'pending') {
+            $status = 'scheduled';
+        }
+        if ($scheduledAt === null && in_array($status, ['scheduled', 'live'], true)) {
+            throw new \InvalidArgumentException($status === 'live'
+                ? 'Programa el partido (fecha y hora) antes de iniciarlo'
+                : 'Indica fecha y hora para programar el partido');
+        }
         $label = isset($data['label']) && $data['label'] !== '' && $data['label'] !== null
             ? trim((string) $data['label'])
             : null;
@@ -103,8 +116,8 @@ class MatchService
         $matchNumber = (int) $stmt->fetchColumn();
 
         $stmt = $pdo->prepare(
-            'INSERT INTO matches (tournament_id, round_number, match_number, label, participant_a_id, participant_b_id, status, created_at, updated_at)
-             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)'
+            'INSERT INTO matches (tournament_id, round_number, match_number, label, participant_a_id, participant_b_id, status, scheduled_at, created_at, updated_at)
+             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)'
         );
         $stmt->execute([
             $tournamentId,
@@ -114,6 +127,7 @@ class MatchService
             $participantA,
             $participantB,
             $status,
+            $scheduledAt,
             date('Y-m-d H:i:s'),
             date('Y-m-d H:i:s'),
         ]);
@@ -205,12 +219,27 @@ class MatchService
             throw new \InvalidArgumentException('Estado de partido inválido');
         }
 
+        // Programación manual: sin fecha no hay programado ni en vivo. Un
+        // partido pendiente con fecha se persiste como programado.
+        $fechaCambia = array_key_exists('scheduled_at', $data);
+        $scheduledAt = $fechaCambia
+            ? ($data['scheduled_at'] !== '' && $data['scheduled_at'] !== null ? (string) $data['scheduled_at'] : null)
+            : $match['scheduled_at'];
+        if ($newStatus === 'pending' && $scheduledAt !== null && $scheduledAt !== '') {
+            $newStatus = 'scheduled';
+        }
+        if (in_array($newStatus, ['scheduled', 'live'], true) && ($scheduledAt === null || $scheduledAt === '')) {
+            throw new \InvalidArgumentException($newStatus === 'live'
+                ? 'Programa el partido (fecha y hora) antes de iniciarlo'
+                : 'Indica fecha y hora para programar el partido');
+        }
+
         $fields = ['status' => $newStatus];
         if (array_key_exists('label', $data)) {
             $fields['label'] = $data['label'] !== null && $data['label'] !== '' ? trim((string) $data['label']) : null;
         }
-        if (isset($data['scheduled_at'])) {
-            $fields['scheduled_at'] = $data['scheduled_at'];
+        if ($fechaCambia) {
+            $fields['scheduled_at'] = $scheduledAt;
         }
         if ($newStatus === 'live') {
             $fields['started_at'] = $fields['started_at'] ?? $match['started_at'] ?? date('Y-m-d H:i:s');

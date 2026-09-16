@@ -148,6 +148,8 @@ class StandingsE2EFlowTest extends TestCase
                 'participant_a_id' => $a,
                 'participant_b_id' => $b,
                 'status' => 'scheduled',
+                // Programado exige fecha (regla de programación manual).
+                'scheduled_at' => '2026-09-10 10:00:00',
             ], $token);
             $this->assertSame(201, $status, "Partido {$i} creado");
             $matchIds[] = (int) $body['data']['id'];
