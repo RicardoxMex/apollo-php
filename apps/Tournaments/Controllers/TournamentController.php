@@ -67,9 +67,33 @@ class TournamentController extends Controller
                 'visibility' => $this->request->query('visibility'),
                 'organizer_id' => $this->request->query('organizer_id'),
             ];
+
+            // D-F0-4: ver los torneos de un organizador exige sesión; `me`
+            // se resuelve al actor y un tercero no puede pedir otro id (salvo admin).
+            if (($filters['organizer_id'] ?? null) !== null && $filters['organizer_id'] !== '') {
+                $user = $this->resolveUser();
+                if (!$user) {
+                    return $this->json([
+                        'error' => 'Unauthorized',
+                        'message' => 'Inicia sesión para ver los torneos de un organizador',
+                    ], 401);
+                }
+                if ($filters['organizer_id'] === 'me') {
+                    $filters['organizer_id'] = (int) $user->id;
+                } elseif ((int) $filters['organizer_id'] !== (int) $user->id && !$user->hasAnyRole(['admin'])) {
+                    return $this->json([
+                        'error' => 'Forbidden',
+                        'message' => 'Solo puedes ver los torneos que organizas',
+                    ], 403);
+                }
+            }
+
+            // perPage acotado a 1..100 (D-F0-4).
+            $perPage = max(1, min(100, (int) $this->request->query('perPage', 20)));
+
             $result = $this->tournaments->index(
                 array_filter($filters, fn($v) => $v !== null && $v !== ''),
-                (int) $this->request->query('perPage', 20),
+                $perPage,
                 (int) $this->request->query('page', 1),
             );
             return $this->json(['success' => true, ...$result]);
@@ -155,6 +179,16 @@ class TournamentController extends Controller
         return $this->transition((int) $id, 'finish');
     }
 
+    public function pause($id)
+    {
+        return $this->transition((int) $id, 'pause');
+    }
+
+    public function resume($id)
+    {
+        return $this->transition((int) $id, 'resume');
+    }
+
     private function transition(int $id, string $action)
     {
         try {
@@ -162,7 +196,12 @@ class TournamentController extends Controller
             if (!$tournament) {
                 return $this->json(['error' => 'Torneo no encontrado'], 404);
             }
-            return $this->json(['success' => true, 'data' => $tournament, 'message' => "Torneo {$action}ado"]);
+            $message = match ($action) {
+                'pause' => 'Torneo pausado',
+                'resume' => 'Torneo reanudado',
+                default => "Torneo {$action}ado",
+            };
+            return $this->json(['success' => true, 'data' => $tournament, 'message' => $message]);
         } catch (\InvalidArgumentException $e) {
             return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
         } catch (\Apps\ApolloAuth\Exceptions\EmailNotVerifiedException $e) {
@@ -223,6 +262,20 @@ class TournamentController extends Controller
             return $this->json(['success' => true, 'data' => $history]);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo cargar el historial', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    /**
+     * Inscripciones del participante (PORTAL-01, REQ-01): GET /profile/registrations (auth).
+     * Actor-scoped: solo las propias (applicant o jugador vinculado).
+     */
+    public function myRegistrations()
+    {
+        try {
+            $rows = (new \Apps\Tournaments\Services\ProfileRegistrationsService())->list($this->actorId());
+            return $this->json(['success' => true, 'data' => $rows]);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => 'No se pudieron cargar las inscripciones', 'message' => $e->getMessage()], 500);
         }
     }
 
@@ -287,6 +340,32 @@ class TournamentController extends Controller
     private function actorId(): int
     {
         return (int) $this->request->user()->id;
+    }
+
+    /**
+     * Resuelve el usuario autenticado en rutas públicas (D-F0-4): si el
+     * request ya lo trae (middleware auth) lo reutiliza; si no, valida un
+     * Bearer token opcional sin rechazar al anónimo.
+     */
+    private function resolveUser(): ?\Apps\ApolloAuth\Models\User
+    {
+        if ($this->request->hasUser()) {
+            return $this->request->user();
+        }
+
+        $header = (string) $this->request->header('Authorization', '');
+        if (!str_starts_with($header, 'Bearer ')) {
+            return null;
+        }
+
+        $user = app(\Apps\ApolloAuth\Services\AuthService::class)
+            ->authenticateFromToken(substr($header, 7));
+
+        if ($user) {
+            $this->request->setUser($user);
+        }
+
+        return $user;
     }
 
     private function body(): array

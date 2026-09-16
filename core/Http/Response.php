@@ -52,6 +52,8 @@ class Response {
      * Servir un archivo inline (se muestra/abre en el navegador).
      */
     public static function file(string $path, array $headers = []): self {
+        $headers['X-Content-Type-Options'] = 'nosniff';
+
         return self::serveFile($path, basename($path), 'inline', $headers);
     }
     

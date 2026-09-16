@@ -80,6 +80,58 @@ class TournamentRulesTest extends TestCase
         $this->assertFalse($r['ok']);
     }
 
+    public function test_finish_jornadas_needs_no_pending_matches(): void
+    {
+        // round-robin / liga: cierra con partido(s) y ninguno pendiente.
+        $r = TournamentRules::canFinish(['status' => 'live', 'format' => 'round_robin', 'sin_partidos_pendientes' => false]);
+        $this->assertFalse($r['ok']);
+        $this->assertStringContainsString('partidos', $r['reason']);
+
+        $r = TournamentRules::canFinish(['status' => 'live', 'format' => 'round-robin', 'sin_partidos_pendientes' => true]);
+        $this->assertTrue($r['ok']);
+
+        $r = TournamentRules::canFinish(['status' => 'live', 'format' => 'liga', 'sin_partidos_pendientes' => true]);
+        $this->assertTrue($r['ok']);
+
+        $r = TournamentRules::canFinish(['status' => 'live', 'format' => 'league', 'sin_partidos_pendientes' => true]);
+        $this->assertTrue($r['ok']);
+    }
+
+    public function test_finish_groups_sin_clasificados_uses_jornadas_rule(): void
+    {
+        $r = TournamentRules::canFinish(['status' => 'live', 'format' => 'groups', 'clasificados_eliminacion' => 0, 'sin_partidos_pendientes' => true]);
+        $this->assertTrue($r['ok'], 'grupos sin fase final cierra sin partidos pendientes');
+
+        $r = TournamentRules::canFinish(['status' => 'live', 'format' => 'groups', 'clasificados_eliminacion' => 0, 'sin_partidos_pendientes' => false]);
+        $this->assertFalse($r['ok']);
+
+        // Con clasificados sigue mandando la final con ganador.
+        $r = TournamentRules::canFinish([
+            'status' => 'live', 'format' => 'groups', 'clasificados_eliminacion' => 4,
+            'sin_partidos_pendientes' => true, 'final_con_ganador' => false,
+        ]);
+        $this->assertFalse($r['ok']);
+        $this->assertStringContainsString('final', $r['reason']);
+
+        $r = TournamentRules::canFinish([
+            'status' => 'live', 'format' => 'groups', 'clasificados_eliminacion' => 4,
+            'sin_partidos_pendientes' => true, 'final_con_ganador' => true,
+        ]);
+        $this->assertTrue($r['ok']);
+    }
+
+    public function test_can_pause_and_resume_only_open_and_paused(): void
+    {
+        $this->assertTrue(TournamentRules::canPause(['status' => 'open'])['ok']);
+        $this->assertFalse(TournamentRules::canPause(['status' => 'paused'])['ok']);
+        $this->assertFalse(TournamentRules::canPause(['status' => 'live'])['ok'], 'v1: un torneo live no se pausa');
+        $this->assertFalse(TournamentRules::canPause(['status' => 'draft'])['ok']);
+
+        $this->assertTrue(TournamentRules::canResume(['status' => 'paused'])['ok']);
+        $this->assertFalse(TournamentRules::canResume(['status' => 'open'])['ok']);
+        $this->assertFalse(TournamentRules::canResume(['status' => 'draft'])['ok']);
+    }
+
     public function test_editable_fields_by_status(): void
     {
         $draft = TournamentRules::editableFields('draft');

@@ -16,13 +16,20 @@ class TournamentRepository extends BaseRepository
 
     /**
      * Listing with filters (mirror of the frontend explore).
+     * Nunca expone torneos con soft-delete (D-F0-4).
      */
     public function filter(array $filters, int $perPage = 20, int $page = 1): array
     {
         $query = $this->builder();
 
+        $query->whereNull('deleted_at');
+
         if (!empty($filters['status'])) {
-            $query->where('status', $filters['status']);
+            if (is_array($filters['status'])) {
+                $query->whereIn('status', $filters['status']);
+            } else {
+                $query->where('status', $filters['status']);
+            }
         }
         if (!empty($filters['sport'])) {
             $query->where('sport', $filters['sport']);

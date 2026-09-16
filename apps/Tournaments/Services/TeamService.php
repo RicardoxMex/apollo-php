@@ -111,6 +111,47 @@ class TeamService
         return $this->show((int) $id);
     }
 
+    /**
+     * ¿El usuario es capitán del equipo? (ownership update/delete, R-PERIM-02)
+     */
+    public function isCaptain(int $userId, int $teamId): bool
+    {
+        $stmt = DatabaseManager::getConnection()->prepare(
+            'SELECT 1 FROM team_captains WHERE team_id = ? AND user_id = ? LIMIT 1'
+        );
+        $stmt->execute([$teamId, $userId]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
+    /**
+     * Ownership de un equipo (R-PERIM-02): capitán del equipo, u organizador
+     * de algún torneo donde el equipo está inscrito o participa. El admin se
+     * resuelve en el controlador.
+     */
+    public function canManage(int $teamId, int $userId): bool
+    {
+        if ($this->isCaptain($userId, $teamId)) {
+            return true;
+        }
+
+        $stmt = DatabaseManager::getConnection()->prepare(
+            'SELECT 1 FROM tournaments t
+             WHERE t.organizer_id = ?
+               AND t.deleted_at IS NULL
+               AND (
+                    EXISTS (SELECT 1 FROM tournament_registrations r
+                            WHERE r.tournament_id = t.id AND r.team_id = ?)
+                    OR EXISTS (SELECT 1 FROM tournament_participants p
+                               WHERE p.tournament_id = t.id AND p.team_id = ?)
+               )
+             LIMIT 1'
+        );
+        $stmt->execute([$userId, $teamId, $teamId]);
+
+        return (bool) $stmt->fetchColumn();
+    }
+
     public function update(int $actorId, int $id, array $data): ?array
     {
         $team = $this->teams->find($id);

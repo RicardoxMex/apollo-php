@@ -36,9 +36,10 @@ return [
     ],
 
     'rate_limit' => [
-        'max_attempts' => (int) env('RATE_LIMIT_MAX_ATTEMPTS', 5),
+        'enabled' => !filter_var(env('DISABLE_RATE_LIMIT', false), FILTER_VALIDATE_BOOLEAN),
+        'max_attempts' => (int) env('RATE_LIMIT_MAX_ATTEMPTS', 20),
         'window' => (int) env('RATE_LIMIT_WINDOW', 900), // 15 minutos
-        'lockout_duration' => (int) env('RATE_LIMIT_LOCKOUT', 900), // 15 minutos
+        'lockout_duration' => (int) env('RATE_LIMIT_LOCKOUT', 300), // 5 minutos
     ],
 
     'session' => [

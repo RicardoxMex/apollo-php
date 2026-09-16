@@ -1,5 +1,15 @@
 <?php
 
+// Alias estilo Laravel: MAIL_MAILER (preferido) o MAIL_DRIVER.
+// Cifrado: MAIL_SCHEME / MAIL_ENCRYPTION con auto por puerto (465→ssl, 587→tls).
+$driver = env('MAIL_MAILER', env('MAIL_DRIVER', 'log'));
+$port = (int) env('MAIL_PORT', 587);
+$scheme = env('MAIL_SCHEME', env('MAIL_ENCRYPTION'));
+$scheme = is_string($scheme) ? strtolower(trim($scheme)) : $scheme;
+$encryption = ($scheme === null || $scheme === '' || $scheme === 'null')
+    ? ($port === 465 ? 'ssl' : 'tls')
+    : $scheme;
+
 return [
     /*
     |--------------------------------------------------------------------------
@@ -11,7 +21,7 @@ return [
     | (D1). El remitente por defecto se resuelve desde 'from'.
     |
     */
-    'driver' => env('MAIL_DRIVER', 'log'),
+    'driver' => $driver,
     'from' => [
         'address' => env('MAIL_FROM_ADDRESS', 'no-reply@torneomaster.app'),
         'name' => env('MAIL_FROM_NAME', 'TorneoMaster'),
@@ -24,10 +34,10 @@ return [
     */
     'smtp' => [
         'host' => env('MAIL_HOST', 'localhost'),
-        'port' => (int) env('MAIL_PORT', 587),
+        'port' => $port,
         'username' => env('MAIL_USERNAME', ''),
         'password' => env('MAIL_PASSWORD', ''),
-        'encryption' => env('MAIL_ENCRYPTION', 'tls'),   // tls | ssl | none
+        'encryption' => $encryption,   // tls | ssl | none
         'verify_peer' => env('MAIL_VERIFY_PEER', true),
         'timeout' => (int) env('MAIL_TIMEOUT', 15),
     ],

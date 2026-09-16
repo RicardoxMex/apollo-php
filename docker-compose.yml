@@ -1,0 +1,66 @@
+# Sport Tournament Pro — API + MySQL (MVP, una instancia)
+#
+# Uso rápido:
+#   cp .env.production.example .env      # rellenar placeholders (sin secretos reales)
+#   docker compose build
+#   docker compose up -d
+#   docker compose run --rm api php setup_database.php   # migraciones (destructivo: recrea tablas)
+#   docker compose run --rm api php run_seeders.php      # seed opcional
+#   curl http://localhost:8000/api/health                # {"status":"ok","db":true,...}
+#
+# Notas:
+#   · `.env` (gitignored) alimenta a ambos servicios vía env_file.
+#   · DB_HOST se fuerza a `mysql` (nombre del servicio) dentro de la red de compose.
+#   · Volúmenes nombrados: db_data (datos MySQL), uploads y runtime (estado de la API).
+#   · El servicio `api` corre con el usuario www-data y el servidor embebido de PHP.
+#   · Para el servicio realtime (WebSockets, opcional) ver docs/deploy.md.
+
+name: sport-tournament
+
+services:
+  api:
+    build: .
+    image: sport-tournament/api:local
+    restart: unless-stopped
+    env_file: .env
+    environment:
+      DB_HOST: mysql
+    ports:
+      - "8000:8000"
+    volumes:
+      - uploads:/var/www/html/storage/uploads
+      - runtime:/var/www/html/runtime
+    depends_on:
+      mysql:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "php", "-r", "$$r=@file_get_contents('http://127.0.0.1:8000/api/health'); exit($$r===false?1:0);"]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 15s
+
+  mysql:
+    image: mysql:8
+    restart: unless-stopped
+    environment:
+      MYSQL_DATABASE: ${DB_DATABASE:-sport_tournament}
+      MYSQL_USER: ${DB_USERNAME:-sport}
+      MYSQL_PASSWORD: ${DB_PASSWORD:?DB_PASSWORD es obligatorio en .env}
+      MYSQL_ROOT_PASSWORD: ${DB_ROOT_PASSWORD:?DB_ROOT_PASSWORD es obligatorio en .env}
+    command:
+      - --character-set-server=utf8mb4
+      - --collation-server=utf8mb4_unicode_ci
+    volumes:
+      - db_data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD-SHELL", "mysqladmin ping -h 127.0.0.1 -uroot -p$$MYSQL_ROOT_PASSWORD --silent"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  db_data:
+  uploads:
+  runtime:

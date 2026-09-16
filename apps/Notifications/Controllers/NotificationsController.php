@@ -27,11 +27,34 @@ class NotificationsController extends Controller
             return $this->json(['error' => 'Unauthorized'], 401);
         }
 
-        $items = $this->repo->forUser((int) $user->id, [
-            'unread' => (bool) $request->query('unread', false),
-        ]);
+        $userId = (int) $user->id;
+        $page = max(1, (int) $request->query('page', 1));
+        $perPage = max(1, min(100, (int) $request->query('perPage', 20)));
 
-        return $this->json(['success' => true, 'data' => $items]);
+        // forUser() hidrata todas las notificaciones del usuario (volumen por
+        // usuario) y el filtro se resuelve aquí: el filtro 'unread' del
+        // repositorio genera `read_at = NULL`, que nunca coincide.
+        $items = $this->repo->forUser($userId);
+
+        $unreadCount = count(array_filter($items, fn (array $row) => empty($row['read_at'])));
+
+        if ((bool) $request->query('unread', false)) {
+            $items = array_values(array_filter($items, fn (array $row) => empty($row['read_at'])));
+        }
+
+        $total = count($items);
+
+        return $this->json([
+            'success' => true,
+            'data' => array_slice($items, ($page - 1) * $perPage, $perPage),
+            'meta' => [
+                'total' => $total,
+                'per_page' => $perPage,
+                'current_page' => $page,
+                'last_page' => (int) ceil($total / $perPage),
+            ],
+            'unread_count' => $unreadCount,
+        ]);
     }
 
     public function show(Request $request, string $id): Response

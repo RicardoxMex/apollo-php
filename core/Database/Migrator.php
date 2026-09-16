@@ -21,9 +21,10 @@ class Migrator
 
     public static function ensureTrackingTable(PDO $pdo): void
     {
+        // VARCHAR (no TEXT) en la PK: MySQL exige longitud de clave en índices.
         $pdo->exec(
             'CREATE TABLE IF NOT EXISTS migrations (
-                migration TEXT PRIMARY KEY,
+                migration VARCHAR(255) PRIMARY KEY,
                 batch INTEGER NOT NULL DEFAULT 1,
                 executed_at TEXT NOT NULL
             )'

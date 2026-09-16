@@ -72,6 +72,11 @@ class AnnouncementE2EFlowTest extends TestCase
 
     private function usuarioVerificado(string $username, string $email): string
     {
+        // Purga el bucket de rate limit: cada usuario legítimo hace
+        // register+login en la misma ventana de test (mismo patrón que
+        // EmailE2EFlowTest, el flujo real lo cubre RateLimitRoutesTest).
+        self::$pdo->prepare('DELETE FROM rate_limits')->execute();
+
         $this->dispatchJson('POST', '/api/auth/register', [
             'username' => $username, 'email' => $email, 'password' => 'clave-ann-1',
         ]);

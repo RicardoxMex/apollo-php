@@ -1,0 +1,33 @@
+# Contexto de build de la API (Sport Tournament Pro)
+# Mantener el contexto mínimo y sin secretos: el .env se inyecta en runtime
+# (docker-compose env_file), nunca se hornea en la imagen.
+
+# VCS / CI / tooling del OS
+.git
+.github
+.ai
+.gitignore
+.phpunit.cache
+
+# Secretos y entorno local
+.env
+.env.*
+
+# Dependencias (se instalan dentro de la imagen)
+vendor/
+node_modules/
+
+# Artefactos locales (se crean/inyectan en runtime)
+runtime/
+public/runtime/
+storage/uploads/*
+!storage/uploads/.gitignore
+database/*.sqlite
+
+# Tests y documentación (no hacen falta en la imagen)
+tests/
+docs/
+*.md
+Dockerfile
+.dockerignore
+docker-compose.yml

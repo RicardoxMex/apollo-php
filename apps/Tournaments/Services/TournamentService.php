@@ -2,6 +2,8 @@
 
 namespace Apps\Tournaments\Services;
 
+use Apps\ApolloAuth\Exceptions\EmailNotVerifiedException;
+use Apps\ApolloAuth\Models\User;
 use Apps\Tournaments\Repositories\TournamentRepository;
 use Apollo\Core\Database\Connection\DatabaseManager;
 use Apollo\Core\Http\Request;
@@ -9,6 +11,9 @@ use PDO;
 
 class TournamentService
 {
+    /** Estados visibles para el listado público (D-F0-4). */
+    private const PUBLIC_STATUSES = ['open', 'live', 'finished', 'paused'];
+
     public function __construct(
         private TournamentRepository $tournaments,
         private AuditLogService $audit,
@@ -16,18 +21,43 @@ class TournamentService
     }
 
     /**
-     * Public listing (explore): filters + pagination, ENUMs mapped to the API.
+     * Listing (explore): filters + pagination, ENUMs mapped to the API.
+     * Sin organizador el listado es la vitrina pública: solo visibilidad
+     * pública y estados públicos (nunca borradores/privados) — D-F0-4.
      */
     public function index(array $filters, int $perPage = 20, int $page = 1): array
     {
         $filters['visibility'] = Mappings::visibilityFromApi($filters['visibility'] ?? null) ?? $filters['visibility'] ?? null;
+
+        if (empty($filters['organizer_id'])) {
+            // La vitrina pública ignora cualquier visibility/status que no sea público.
+            $filters['visibility'] = 'public';
+
+            $status = $filters['status'] ?? null;
+            if ($status === null || $status === '') {
+                $filters['status'] = self::PUBLIC_STATUSES;
+            } elseif (in_array($status, self::PUBLIC_STATUSES, true)) {
+                $filters['status'] = [$status];
+            } else {
+                // Estado no público (p. ej. draft): el listado anónimo queda vacío.
+                return [
+                    'data' => [],
+                    'meta' => [
+                        'total' => 0,
+                        'per_page' => $perPage,
+                        'current_page' => $page,
+                        'last_page' => 0,
+                    ],
+                ];
+            }
+        }
+
         $result = $this->tournaments->filter($filters, $perPage, $page);
         $aceptados = $this->countAceptadosPorTorneo(array_column($result['data'], 'id'));
 
         foreach ($result['data'] as &$t) {
             $t['format'] = Mappings::formatToApi($t['format'] ?? null);
             $t['visibility'] = Mappings::visibilityToApi($t['visibility'] ?? null);
-            $t['deleted_at'] = null; // the repository does not expose soft-delete in the public listing
             $t['aceptados'] = (int) ($aceptados[(int) $t['id']] ?? 0);
         }
 
@@ -143,7 +173,7 @@ if ($maxParticipants < 2) {
                 'start_date' => $data['start_date'] ?? null,
                 'end_date' => $data['end_date'] ?? null,
                 'registration_deadline' => $data['registration_deadline'] ?? null,
-                'registration_fee' => 0, // lanzamiento gratis: el backend no cobra cuotas por ahora
+                'registration_fee' => (float) ($data['registration_fee'] ?? 0),
                 'currency' => strtoupper($data['currency'] ?? 'USD'),
                 'visibility' => Mappings::visibilityFromApi($data['visibility'] ?? 'publico') ?? 'public',
                 'minimum_age' => !empty($data['minimum_age']) ? (int) $data['minimum_age'] : null,
@@ -200,11 +230,6 @@ if ($editable === [] && $data !== []) {
             if (!TournamentRules::esBracketCompleto($clasificados)) {
                 throw new \InvalidArgumentException('El cuadro final debe ser completo: usa una potencia de 2 (2, 4, 8, 16\u2026) para que ning\u00fan equipo se quede sin jornada');
             }
-        }
-
-        // Lanzamiento gratis: la cuota de inscripción siempre queda en 0.
-        if (array_key_exists('registration_fee', $editable)) {
-            $editable['registration_fee'] = 0;
         }
 
         // Si cambia el título, el slug se regenera (único contra el resto).
@@ -324,7 +349,7 @@ if ($editable === [] && $data !== []) {
                 'start_date' => $tournament['start_date'],
                 'end_date' => $tournament['end_date'],
                 'registration_deadline' => $tournament['registration_deadline'],
-                'registration_fee' => 0, // lanzamiento gratis
+                'registration_fee' => $tournament['registration_fee'],
                 'currency' => $tournament['currency'],
                 'visibility' => $tournament['visibility'],
                 'minimum_age' => $tournament['minimum_age'],
@@ -358,7 +383,8 @@ if ($editable === [] && $data !== []) {
     }
 
     /**
-     * Lifecycle transitions: publish (draft→open), start (open→live), finish (live→finished).
+     * Lifecycle transitions: publish (draft→open), start (open→live),
+     * finish (live→finished), pause (open→paused), resume (paused→open).
      */
     public function transition(int $actorId, int $id, string $action, ?Request $request = null): ?array
     {
@@ -372,8 +398,19 @@ if ($editable === [] && $data !== []) {
             'publish' => 'open',
             'start' => 'live',
             'finish' => 'finished',
-            default => throw new \InvalidArgumentException('Acción inválida: publish, start o finish'),
+            'pause' => 'paused',
+            'resume' => 'open',
+            default => throw new \InvalidArgumentException('Acción inválida: publish, start, finish, pause o resume'),
         };
+
+        // D2/EGATE-01: publicar o iniciar exige el email del organizador verificado.
+        // pause/resume quedan fuera del gate (D-F0-7).
+        if (in_array($action, ['publish', 'start'], true)) {
+            $actor = User::find($actorId);
+            if (!$actor || !$actor->hasVerifiedEmail()) {
+                throw new EmailNotVerifiedException();
+            }
+        }
 
         $pdo = DatabaseManager::getConnection();
 
@@ -384,8 +421,15 @@ if ($editable === [] && $data !== []) {
                 'tiene_draw' => $this->hasDraw($pdo, $id),
                 'tiene_partidos' => $this->hasMatches($pdo, $id),
             ]);
+        } elseif ($action === 'finish') {
+            $check = TournamentRules::canFinish($tournament + [
+                'final_con_ganador' => $this->hasFinalWinner($pdo, $id),
+                'sin_partidos_pendientes' => $this->sinPartidosPendientes($pdo, $id),
+            ]);
+        } elseif ($action === 'pause') {
+            $check = TournamentRules::canPause($tournament);
         } else {
-            $check = TournamentRules::canFinish($tournament + ['final_con_ganador' => $this->hasFinalWinner($pdo, $id)]);
+            $check = TournamentRules::canResume($tournament);
         }
 
         if (!$check['ok']) {
@@ -393,9 +437,18 @@ if ($editable === [] && $data !== []) {
         }
 
         $this->tournaments->update($id, ['status' => $nextStatus]);
-        $this->audit->record($actorId, 'tournament', $id, "torneo:{$action}", ['status' => $tournament['status']], ['status' => $nextStatus], $request);
+        $this->audit->record($actorId, 'tournament', $id, $this->auditAction($action), ['status' => $tournament['status']], ['status' => $nextStatus], $request);
 
         return $this->show($id);
+    }
+
+    private function auditAction(string $action): string
+    {
+        return match ($action) {
+            'pause' => 'torneo:pausar',
+            'resume' => 'torneo:reanudar',
+            default => "torneo:{$action}",
+        };
     }
 
     /**
@@ -471,6 +524,21 @@ if ($editable === [] && $data !== []) {
         $stmt = $pdo->prepare('SELECT COUNT(*) AS total FROM matches WHERE tournament_id = ?');
         $stmt->execute([$tournamentId]);
         return ((int) $stmt->fetch(PDO::FETCH_ASSOC)['total']) > 0;
+    }
+
+    /**
+     * Cierre de jornadas (D-F0-7): hay al menos un partido y ninguno queda
+     * en pending|scheduled|live (todos completed/cancelled).
+     */
+    private function sinPartidosPendientes(PDO $pdo, int $tournamentId): bool
+    {
+        if (!$this->hasMatches($pdo, $tournamentId)) {
+            return false;
+        }
+
+        $stmt = $pdo->prepare("SELECT COUNT(*) AS total FROM matches WHERE tournament_id = ? AND status IN ('pending','scheduled','live')");
+        $stmt->execute([$tournamentId]);
+        return ((int) $stmt->fetch(PDO::FETCH_ASSOC)['total']) === 0;
     }
 
     private function hasFinalWinner(PDO $pdo, int $tournamentId): bool

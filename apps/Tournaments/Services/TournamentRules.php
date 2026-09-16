@@ -60,7 +60,13 @@ class TournamentRules
     }
 
     /**
-     * Transition live → finished. Requires the final (last round) to have a winner.
+     * Transition live → finished.
+     *  - Formatos de jornadas (round-robin / liga) y grupos sin fase final
+     *    (`clasificados_eliminacion == 0`): basta con que exista al menos un
+     *    partido y ninguno quede en pending|scheduled|live. La bandera
+     *    `sin_partidos_pendientes` la calcula TournamentService.
+     *  - Resto (brackets y grupos con clasificados): la final (última ronda)
+     *    debe tener un ganador.
      */
     public static function canFinish(array $tournament): array
     {
@@ -68,8 +74,46 @@ class TournamentRules
             return ['ok' => false, 'reason' => 'Solo se pueden finalizar torneos en vivo'];
         }
 
+        // Acepta tanto el valor del front (round-robin) como el del DB ENUM (round_robin).
+        $formato = $tournament['format'] ?? '';
+        $esFormatoJornadas = in_array($formato, ['round-robin', 'round_robin', 'liga', 'league'], true);
+        $esGruposSinFinal = in_array($formato, ['grupos', 'groups'], true)
+            && (int) ($tournament['clasificados_eliminacion'] ?? 0) === 0;
+
+        if ($esFormatoJornadas || $esGruposSinFinal) {
+            if (empty($tournament['sin_partidos_pendientes'])) {
+                return ['ok' => false, 'reason' => 'Finaliza o cancela todos los partidos antes de cerrar el torneo'];
+            }
+
+            return ['ok' => true];
+        }
+
         if (empty($tournament['final_con_ganador'])) {
             return ['ok' => false, 'reason' => 'La final debe tener un ganador antes de finalizar el torneo'];
+        }
+
+        return ['ok' => true];
+    }
+
+    /**
+     * Transition open → paused (v1: un torneo live no se pausa).
+     */
+    public static function canPause(array $tournament): array
+    {
+        if (($tournament['status'] ?? '') !== 'open') {
+            return ['ok' => false, 'reason' => 'Solo se pueden pausar torneos abiertos a inscripciones'];
+        }
+
+        return ['ok' => true];
+    }
+
+    /**
+     * Transition paused → open.
+     */
+    public static function canResume(array $tournament): array
+    {
+        if (($tournament['status'] ?? '') !== 'paused') {
+            return ['ok' => false, 'reason' => 'Solo se pueden reanudar torneos pausados'];
         }
 
         return ['ok' => true];

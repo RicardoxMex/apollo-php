@@ -35,12 +35,13 @@ class ApiSmokeTest extends TestCase
         }
     }
 
-    public function test_closure_route_with_middleware_returns_200(): void
+    public function test_closure_route_with_middleware_requires_auth(): void
     {
+        // /api/users/test ahora está tras auth + role.admin (R-PERIM-01)
         [$status, $body] = $this->dispatch('GET', '/api/users/test');
 
-        $this->assertSame(200, $status);
-        $this->assertArrayHasKey('message', $body);
+        $this->assertSame(401, $status);
+        $this->assertSame('Unauthorized', $body['error']);
     }
 
     public function test_products_crud_routes_are_registered_and_reachable(): void

@@ -16,12 +16,16 @@ use PHPUnit\Framework\TestCase;
  */
 class RateLimitMiddlewareTest extends TestCase
 {
+    /** Valor previo de la env para no contaminar a otras suites del proceso. */
+    private ?string $rateLimitEnvOriginal = null;
+
     protected function setUp(): void
     {
         if (!extension_loaded('pdo_sqlite')) {
             $this->markTestSkipped('pdo_sqlite no disponible');
         }
 
+        $this->rateLimitEnvOriginal = $_ENV['RATE_LIMIT_MAX_ATTEMPTS'] ?? null;
         $_ENV['RATE_LIMIT_MAX_ATTEMPTS'] = '3';
         $_ENV['RATE_LIMIT_WINDOW'] = '900';
 
@@ -106,5 +110,16 @@ class RateLimitMiddlewareTest extends TestCase
         )->execute();
 
         $this->assertSame(200, $middleware->handle($this->request(), $next)->getStatusCode());
+    }
+
+    protected function tearDown(): void
+    {
+        if ($this->rateLimitEnvOriginal === null) {
+            unset($_ENV['RATE_LIMIT_MAX_ATTEMPTS']);
+        } else {
+            $_ENV['RATE_LIMIT_MAX_ATTEMPTS'] = $this->rateLimitEnvOriginal;
+        }
+
+        parent::tearDown();
     }
 }

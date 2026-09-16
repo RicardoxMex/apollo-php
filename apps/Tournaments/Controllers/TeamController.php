@@ -63,6 +63,13 @@ class TeamController extends Controller
     public function update($id)
     {
         try {
+            if (!$this->canManage((int) $id)) {
+                return $this->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Solo el capitán, el organizador de un torneo con el equipo inscrito o un administrador puede actualizarlo',
+                ], 403);
+            }
+
             $data = $this->validate($this->body(), [
                 'name'     => 'sometimes|string|max:100',
                 'contact'  => 'sometimes|nullable|string|max:255',
@@ -87,6 +94,13 @@ class TeamController extends Controller
     public function destroy($id)
     {
         try {
+            if (!$this->canManage((int) $id)) {
+                return $this->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Solo el capitán, el organizador de un torneo con el equipo inscrito o un administrador puede eliminarlo',
+                ], 403);
+            }
+
             if (!$this->teams->delete($this->actorId(), (int) $id)) {
                 return $this->json(['error' => 'Equipo no encontrado'], 404);
             }
@@ -94,6 +108,20 @@ class TeamController extends Controller
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo eliminar el equipo', 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Ownership (R-PERIM-02): capitán del equipo, organizador de un torneo
+     * donde el equipo está inscrito/participa, o admin.
+     */
+    protected function canManage(int $teamId): bool
+    {
+        return $this->isAdmin() || $this->teams->canManage($teamId, $this->actorId());
+    }
+
+    protected function isAdmin(): bool
+    {
+        return $this->request->user()?->isAdmin() === true;
     }
 
     protected function actorId(): int

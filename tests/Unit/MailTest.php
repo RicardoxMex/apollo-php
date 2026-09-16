@@ -111,4 +111,22 @@ class MailTest extends TestCase
         $mailer = new Mailer(new LogTransport($this->tmpDir));
         $this->assertFalse($mailer->sendTemplate('no_existe', 'a@b.c'));
     }
+
+    public function test_email_changed_template_renders_name_and_new_email(): void
+    {
+        $template = Template::get('email_changed');
+        $this->assertNotNull($template);
+        $this->assertStringContainsString('TorneoMaster', $template['subject']);
+
+        $vars = ['name' => 'Ana', 'new_email' => 'nueva@test.local'];
+
+        $rendered = Template::render($template['html'], $vars);
+        $this->assertStringContainsString('Ana', $rendered);
+        $this->assertStringContainsString('nueva@test.local', $rendered);
+        $this->assertStringContainsString('si no fuiste tú, recupera tu cuenta', mb_strtolower($rendered));
+
+        $text = Template::render($template['text'], $vars);
+        $this->assertStringContainsString('nueva@test.local', $text);
+        $this->assertStringContainsString('si no fuiste tú, recupera tu cuenta', mb_strtolower($text));
+    }
 }

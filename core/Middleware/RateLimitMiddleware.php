@@ -30,7 +30,13 @@ class RateLimitMiddleware
     public function handle(Request $request, Closure $next)
     {
         $config = config('auth.rate_limit') ?? [];
-        $maxAttempts = max(1, (int) ($config['max_attempts'] ?? 5));
+
+        // Flag de desarrollo (DISABLE_RATE_LIMIT=true): no bloquea localmente.
+        if (($config['enabled'] ?? true) === false) {
+            return $next($request);
+        }
+
+        $maxAttempts = max(1, (int) ($config['max_attempts'] ?? 20));
         $window = max(1, (int) ($config['window'] ?? 900));
         $lockout = max(1, (int) ($config['lockout_duration'] ?? $window));
 

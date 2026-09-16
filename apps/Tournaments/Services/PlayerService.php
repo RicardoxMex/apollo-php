@@ -3,6 +3,7 @@
 namespace Apps\Tournaments\Services;
 
 use Apps\Tournaments\Repositories\PlayerRepository;
+use Apollo\Core\Database\Connection\DatabaseManager;
 
 class PlayerService
 {
@@ -41,6 +42,53 @@ class PlayerService
 
         $this->audit->record($actorId, 'player', (int) $id, 'jugador:crear', null, ['name' => $name]);
         return $id;
+    }
+
+    /**
+     * Ownership de un jugador (R-PERIM-02): dueño (user_id), capitán de un
+     * equipo que lo contiene, u organizador de algún torneo donde el jugador
+     * está inscrito o participa. El admin se resuelve en el controlador.
+     */
+    public function canManage(int $userId, array $player): bool
+    {
+        if (!empty($player['user_id']) && (int) $player['user_id'] === $userId) {
+            return true;
+        }
+
+        if (empty($player['id'])) {
+            return false;
+        }
+
+        $playerId = (int) $player['id'];
+        $pdo = DatabaseManager::getConnection();
+
+        $stmt = $pdo->prepare(
+            'SELECT 1 FROM team_players tp
+             JOIN team_captains tc ON tc.team_id = tp.team_id
+             WHERE tp.player_id = ? AND tc.user_id = ?
+             LIMIT 1'
+        );
+        $stmt->execute([$playerId, $userId]);
+
+        if ($stmt->fetchColumn()) {
+            return true;
+        }
+
+        $stmt = $pdo->prepare(
+            'SELECT 1 FROM tournaments t
+             WHERE t.organizer_id = ?
+               AND t.deleted_at IS NULL
+               AND (
+                    EXISTS (SELECT 1 FROM tournament_registrations r
+                            WHERE r.tournament_id = t.id AND r.player_id = ?)
+                    OR EXISTS (SELECT 1 FROM tournament_participants p
+                               WHERE p.tournament_id = t.id AND p.player_id = ?)
+               )
+             LIMIT 1'
+        );
+        $stmt->execute([$userId, $playerId, $playerId]);
+
+        return (bool) $stmt->fetchColumn();
     }
 
     public function update(int $actorId, int $id, array $data): ?array

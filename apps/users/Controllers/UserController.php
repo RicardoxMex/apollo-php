@@ -8,6 +8,20 @@ use Apps\Users\Services\UserService;
 
 class UserController extends Controller
 {
+    /**
+     * Campos seguros expuestos por la API (nunca password ni columnas internas).
+     */
+    private const SAFE_FIELDS = [
+        'id',
+        'username',
+        'email',
+        'first_name',
+        'last_name',
+        'status',
+        'email_verified_at',
+        'created_at',
+        'updated_at',
+    ];
 
     private UserService $userService;
 
@@ -15,6 +29,22 @@ class UserController extends Controller
     {
         parent::__construct($container);
         $this->userService = $userService;
+    }
+
+    /**
+     * Proyecta una fila de users a los campos seguros permitidos.
+     */
+    private function safeUser(array $user): array
+    {
+        $safe = [];
+
+        foreach (self::SAFE_FIELDS as $field) {
+            if (array_key_exists($field, $user)) {
+                $safe[$field] = $user[$field];
+            }
+        }
+
+        return $safe;
     }
 
     public function index()
@@ -25,7 +55,8 @@ class UserController extends Controller
             // Si hay parámetro de búsqueda, usar search en lugar de paginación
             if (!empty($search)) {
                 $users = $this->userService->searchUsers($search);
-                
+                $users = array_map(fn(array $user) => $this->safeUser($user), $users);
+
                 return $this->json([
                     'success' => true,
                     'data' => $users,
@@ -36,6 +67,7 @@ class UserController extends Controller
             
 
             $users = $this->userService->paginate();
+            $users['data'] = array_map(fn(array $user) => $this->safeUser($user), $users['data'] ?? []);
 
             return $this->json([
                 'success' => true,
@@ -62,7 +94,7 @@ class UserController extends Controller
 
             return $this->json([
                 'success' => true,
-                'data' => $user
+                'data' => $this->safeUser($user)
             ]);
         } catch (\Throwable $e) {
             return $this->json([

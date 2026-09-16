@@ -60,7 +60,7 @@ class MySqlNotificationRepository implements NotificationRepository
         $query->where('user_id', $userId);
 
         if (isset($filters['unread']) && $filters['unread']) {
-            $query->where('read_at', null);
+            $query->whereNull('read_at');
         }
 
         if (isset($filters['limit'])) {

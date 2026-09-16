@@ -15,10 +15,24 @@ use Exception;
 class AdminController
 {
     /**
+     * Endpoints admin pendientes de reparación (D-ADM: Fase 2).
+     * Responden 501 explícito en lugar de 400/500.
+     */
+    private function notImplemented(): Response
+    {
+        return Response::json([
+            'error' => 'Not implemented',
+            'message' => 'Pendiente Fase 2'
+        ], 501);
+    }
+
+    /**
      * List all users
      */
     public function users(Request $request): Response
     {
+        return $this->notImplemented();
+
         try {
             $page = (int) $request->query('page', 1);
             $limit = (int) $request->query('limit', 20);
@@ -78,6 +92,8 @@ class AdminController
      */
     public function showUser(Request $request): Response
     {
+        return $this->notImplemented();
+
         try {
             $userId = $request->attributes['id'] ?? null;
             
@@ -142,6 +158,8 @@ class AdminController
      */
     public function updateUser(Request $request): Response
     {
+        return $this->notImplemented();
+
         try {
             $userId = $request->attributes['id'] ?? null;
             $data = $request->json() ?? [];
@@ -222,6 +240,8 @@ class AdminController
      */
     public function assignRole(Request $request): Response
     {
+        return $this->notImplemented();
+
         try {
             $userId = $request->attributes['id'] ?? null;
             $data = $request->json() ?? [];
@@ -278,6 +298,8 @@ class AdminController
      */
     public function removeRole(Request $request): Response
     {
+        return $this->notImplemented();
+
         try {
             $userId = $request->attributes['id'] ?? null;
             $roleName = $request->attributes['role'] ?? null;
@@ -413,8 +435,10 @@ class AdminController
     /**
      * Update role (nombre/descripción/permisos; roles is_system bloqueados)
      */
-    public function updateRole(Request $request, string $name): Response
+    public function updateRole(Request $request, ?string $name = null): Response
     {
+        return $this->notImplemented();
+
         try {
             $role = Role::where('name', $name)->first();
 
@@ -492,8 +516,10 @@ class AdminController
     /**
      * Delete role (bloqueado para is_system)
      */
-    public function destroyRole(Request $request, string $name): Response
+    public function destroyRole(Request $request, ?string $name = null): Response
     {
+        return $this->notImplemented();
+
         try {
             $role = Role::where('name', $name)->first();
 

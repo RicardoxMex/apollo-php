@@ -12,7 +12,7 @@ use PDO;
  * - Tabla `password_resets` (migración 005) con token hashado (SHA-256),
  *   expiración de 30 minutos, un solo uso.
  * - forgot-password responde siempre 200 (no revela la existencia del email);
- *   el rate limit vive en la ruta (rate_limit.login).
+ *   el rate limit vive en la ruta (rate_limit.email).
  * - reset-password valida token+email, aplica la nueva contraseña y revoca
  *   todas las sesiones activas del usuario.
  */

@@ -4,6 +4,7 @@
 // REST API of the tournaments domain (prefix: api)
 //
 // Public (explore + detail):   GET    /api/tournaments...
+// Public health:               GET    /api/health (sin auth; app + BD)
 // With auth (ApolloAuth JWT):  POST/PUT/DELETE /api/tournaments...
 //                              /api/teams, /api/players, /api/seasons, /api/audit-logs
 // Uploads:                     POST   /api/uploads (auth, servicio nativo core/Uploads)
@@ -16,6 +17,7 @@
 
 use Apps\Tournaments\Controllers\AuditLogController;
 use Apps\Tournaments\Controllers\AnnouncementController;
+use Apps\Tournaments\Controllers\HealthController;
 use Apps\Tournaments\Controllers\MatchController;
 use Apps\Tournaments\Controllers\PaymentController;
 use Apps\Tournaments\Controllers\PlayerController;
@@ -30,6 +32,8 @@ use Apps\Tournaments\Controllers\UploadController;
 
 // ─── Public reads (explore, detail, bracket, matches) ───
 $router->group(['middleware' => ['cors']], function ($router) {
+    // Health check (monitoreo/uptime): público, sin auth, app + BD
+    $router->get('/health', [HealthController::class, 'index'])->name('health');
     $router->get('/tournaments', [TournamentController::class, 'index'])->name('tournaments.index');
     $router->get('/tournaments/{id}', [TournamentController::class, 'show'])->where(['id' => '\d+'])->name('tournaments.show');
     $router->get('/tournaments/{id}/participants', [TournamentController::class, 'participants'])->where(['id' => '\d+'])->name('tournaments.participants');
@@ -54,6 +58,8 @@ $router->group(['middleware' => ['auth', 'cors']], function ($router) {
     $router->post('/tournaments/{id}/publish', [TournamentController::class, 'publish'])->where(['id' => '\d+'])->name('tournaments.publish');
     $router->post('/tournaments/{id}/start', [TournamentController::class, 'start'])->where(['id' => '\d+'])->name('tournaments.start');
     $router->post('/tournaments/{id}/finish', [TournamentController::class, 'finish'])->where(['id' => '\d+'])->name('tournaments.finish');
+    $router->post('/tournaments/{id}/pause', [TournamentController::class, 'pause'])->where(['id' => '\d+'])->name('tournaments.pause');
+    $router->post('/tournaments/{id}/resume', [TournamentController::class, 'resume'])->where(['id' => '\d+'])->name('tournaments.resume');
     $router->post('/tournaments/{tournamentId}/draw', [TournamentController::class, 'generateDraw'])->where(['tournamentId' => '\d+'])->name('tournaments.draw.generate');
     $router->delete('/tournaments/{tournamentId}/draw', [TournamentController::class, 'clearDraw'])->where(['tournamentId' => '\d+'])->name('tournaments.draw.delete');
     $router->post('/tournaments/{tournamentId}/duplicate', [TournamentController::class, 'duplicate'])->where(['tournamentId' => '\d+'])->name('tournaments.duplicate');
@@ -93,17 +99,23 @@ $router->group(['middleware' => ['auth', 'cors']], function ($router) {
     $router->delete('/players/{id}', [PlayerController::class, 'destroy'])->where(['id' => '\d+'])->name('players.destroy');
 
     $router->get('/seasons', [SeasonController::class, 'index'])->name('seasons.index');
-    $router->post('/seasons', [SeasonController::class, 'store'])->name('seasons.store');
+    $router->post('/seasons', [SeasonController::class, 'store'])->middleware('role.admin')->name('seasons.store');
     $router->get('/seasons/{id}', [SeasonController::class, 'show'])->where(['id' => '\d+'])->name('seasons.show');
-    $router->put('/seasons/{id}', [SeasonController::class, 'update'])->where(['id' => '\d+'])->name('seasons.update');
-    $router->delete('/seasons/{id}', [SeasonController::class, 'destroy'])->where(['id' => '\d+'])->name('seasons.destroy');
-
-    // Audit (read only)
-    $router->get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
+    $router->put('/seasons/{id}', [SeasonController::class, 'update'])->where(['id' => '\d+'])->middleware('role.admin')->name('seasons.update');
+    $router->delete('/seasons/{id}', [SeasonController::class, 'destroy'])->where(['id' => '\d+'])->middleware('role.admin')->name('seasons.destroy');
 
     // Historial del perfil (M3): organizados + participados + equipos
     $router->get('/profile/history', [TournamentController::class, 'history'])->name('profile.history');
 
+    // Inscripciones del participante (M1, REQ-01): actor-scoped, con pago agregado
+    $router->get('/profile/registrations', [TournamentController::class, 'myRegistrations'])->name('profile.registrations');
+
     // Uploads: subida de archivos (imágenes) con el servicio nativo de Uploads
     $router->post('/uploads', [UploadController::class, 'store'])->name('uploads.store');
+});
+
+// ─── Admin only (auditoría) ───
+$router->group(['middleware' => ['auth', 'role.admin', 'cors']], function ($router) {
+    // Audit (read only)
+    $router->get('/audit-logs', [AuditLogController::class, 'index'])->name('audit-logs.index');
 });

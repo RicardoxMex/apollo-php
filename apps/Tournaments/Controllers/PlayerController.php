@@ -62,6 +62,18 @@ class PlayerController extends Controller
     public function update($id)
     {
         try {
+            $player = $this->players->show((int) $id);
+            if (!$player) {
+                return $this->json(['error' => 'Jugador no encontrado'], 404);
+            }
+
+            if (!$this->canManage($player)) {
+                return $this->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Solo el dueño, un capitán de un equipo que lo contiene, el organizador de un torneo donde participa o un administrador puede actualizarlo',
+                ], 403);
+            }
+
             $data = $this->validate($this->body(), [
                 'name'          => 'sometimes|string|max:100',
                 'user_id'       => 'sometimes|nullable|integer|min:1',
@@ -85,6 +97,18 @@ class PlayerController extends Controller
     public function destroy($id)
     {
         try {
+            $player = $this->players->show((int) $id);
+            if (!$player) {
+                return $this->json(['error' => 'Jugador no encontrado'], 404);
+            }
+
+            if (!$this->canManage($player)) {
+                return $this->json([
+                    'error' => 'Forbidden',
+                    'message' => 'Solo el dueño, un capitán de un equipo que lo contiene, el organizador de un torneo donde participa o un administrador puede eliminarlo',
+                ], 403);
+            }
+
             if (!$this->players->delete($this->actorId(), (int) $id)) {
                 return $this->json(['error' => 'Jugador no encontrado'], 404);
             }
@@ -92,6 +116,20 @@ class PlayerController extends Controller
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo eliminar el jugador', 'message' => $e->getMessage()], 500);
         }
+    }
+
+    /**
+     * Ownership (R-PERIM-02): user_id dueño, capitán de un equipo que lo
+     * contiene, organizador de un torneo donde participa, o admin.
+     */
+    protected function canManage(array $player): bool
+    {
+        return $this->isAdmin() || $this->players->canManage($this->actorId(), $player);
+    }
+
+    protected function isAdmin(): bool
+    {
+        return $this->request->user()?->isAdmin() === true;
     }
 
     protected function actorId(): int

@@ -42,6 +42,7 @@ class AuthController
                         'username' => $result['user']->username,
                         'email' => $result['user']->email,
                         'full_name' => $result['user']->full_name,
+                        'email_verified' => $result['user']->hasVerifiedEmail(),
                         'roles' => array_map(function($role) { return $role->name; }, $result['user']->roles()),
                         'permissions' => $result['user']->getAllPermissions()
                     ],
@@ -125,7 +126,8 @@ class AuthController
                         'id' => $user->id,
                         'username' => $user->username,
                         'email' => $user->email,
-                        'full_name' => $user->full_name
+                        'full_name' => $user->full_name,
+                        'email_verified' => $user->hasVerifiedEmail()
                     ]
                 ]
             ], 201);
@@ -292,7 +294,9 @@ class AuthController
 
     /**
      * Update the current user's profile (PUT /auth/profile).
-     * The email is not editable (identity); only profile data changes.
+     * Datos personales + cambio de email: exige la contraseña actual, rechaza
+     * emails de otros usuarios, marca el email como no verificado, emite un
+     * token nuevo al correo nuevo y avisa al correo anterior (best-effort).
      */
     public function updateProfile(Request $request): Response
     {
@@ -300,10 +304,12 @@ class AuthController
             $data = $request->json() ?? [];
 
             Validator::make($data, [
-                'first_name' => 'nullable|string|max:60',
-                'last_name'  => 'nullable|string|max:60',
-                'phone'      => 'nullable|string|max:30',
-                'avatar'     => 'nullable|string|max:500',
+                'first_name'       => 'nullable|string|max:60',
+                'last_name'        => 'nullable|string|max:60',
+                'phone'            => 'nullable|string|max:30',
+                'avatar'           => 'nullable|string|max:500',
+                'email'            => 'nullable|email|max:120',
+                'current_password' => 'nullable|string',
             ])->validateOrFail();
 
             $user = $request->user();
@@ -316,8 +322,68 @@ class AuthController
                 }
             }
 
-            if ($fields !== []) {
-                $user->update($fields);
+            $newEmail = isset($data['email']) && is_string($data['email']) ? trim($data['email']) : '';
+            $emailChanged = $newEmail !== '' && strcasecmp($newEmail, (string) $user->email) !== 0;
+
+            if (!$emailChanged) {
+                // Mismo email (o ausente): se ignora; solo cambian los datos personales.
+                if ($fields !== []) {
+                    $user->update($fields);
+                }
+            } else {
+                $currentPassword = isset($data['current_password']) && is_string($data['current_password'])
+                    ? $data['current_password']
+                    : '';
+
+                if ($currentPassword === '') {
+                    throw new ValidationException([
+                        'current_password' => ['La contraseña actual es obligatoria para cambiar el email'],
+                    ]);
+                }
+
+                if (!password_verify($currentPassword, (string) $user->password)) {
+                    throw new ValidationException([
+                        'current_password' => ['La contraseña actual no es correcta'],
+                    ]);
+                }
+
+                // Email en uso por OTRO usuario (incluye soft-deleted; excluye al propio).
+                $existing = User::where('LOWER(email)', '=', strtolower($newEmail))
+                    ->where('id', '!=', $user->id)
+                    ->first();
+
+                if ($existing) {
+                    throw new ValidationException([
+                        'email' => ['Ese email ya está en uso por otro usuario'],
+                    ]);
+                }
+
+                $oldEmail = (string) $user->email;
+
+                // El email se aplica junto al resto y exige re-verificación.
+                foreach ($fields as $field => $value) {
+                    $user->{$field} = $value;
+                }
+                $user->email = $newEmail;
+                $user->email_verified_at = null;
+                $user->save();
+
+                // Token nuevo al correo nuevo: revoca los anteriores y envía.
+                try {
+                    app(VerificationService::class)->issue($user, $request);
+                } catch (\Throwable $e) {
+                    error_log('Verificación tras cambio de email fallida: ' . $e->getMessage());
+                }
+
+                // Aviso al correo anterior (seguridad). El Mailer nunca lanza; se aísla igualmente.
+                try {
+                    mailer()->sendTemplate('email_changed', $oldEmail, [
+                        'name' => $user->display_name,
+                        'new_email' => $newEmail,
+                    ], $user->display_name);
+                } catch (\Throwable $e) {
+                    error_log('Aviso de cambio de email fallido: ' . $e->getMessage());
+                }
             }
 
             return Response::json([

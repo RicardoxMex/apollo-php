@@ -6,3 +6,5 @@
 /runtime/
 /storage/uploads/*
 !/storage/uploads/.gitignore
+/public/runtime/
+

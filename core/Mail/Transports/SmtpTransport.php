@@ -43,18 +43,19 @@ class SmtpTransport implements Transport
             }
 
             if ($this->username !== '') {
-                $this->command($socket, 'AUTH LOGIN');
-                $this->command($socket, base64_encode($this->username));
-                $this->command($socket, base64_encode($this->password));
+                // AUTH LOGIN: 334 (usuario) → 334 (contraseña) → 235 (aceptado).
+                $this->command($socket, 'AUTH LOGIN', [334]);
+                $this->command($socket, base64_encode($this->username), [334]);
+                $this->command($socket, base64_encode($this->password), [235]);
             }
 
             $from = $this->fromOf($message)[0];
-            $this->command($socket, "MAIL FROM:<{$from}>");
-            $this->command($socket, "RCPT TO:<{$message->to}>");
-            $this->command($socket, 'DATA');
+            $this->command($socket, "MAIL FROM:<{$from}>", [250, 251]);
+            $this->command($socket, "RCPT TO:<{$message->to}>", [250, 251]);
+            $this->command($socket, 'DATA', [354]);
             $this->writeData($socket, $message);
             $this->expect($socket, [250]);
-            $this->command($socket, 'QUIT');
+            $this->command($socket, 'QUIT', [221]);
 
             return true;
         } finally {
@@ -90,10 +91,10 @@ class SmtpTransport implements Transport
     }
 
     /** @param resource $socket */
-    private function command($socket, string $line): void
+    private function command($socket, string $line, array $codes = [250]): void
     {
         fwrite($socket, $line . "\r\n");
-        $this->expect($socket, $line === 'DATA' ? [354] : [250]);
+        $this->expect($socket, $codes);
     }
 
     /** @param resource $socket */

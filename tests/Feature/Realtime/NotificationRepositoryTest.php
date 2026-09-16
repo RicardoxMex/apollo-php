@@ -57,6 +57,10 @@ SQL);
         $list = $this->repo->forUser(5);
         $this->assertCount(1, $list);
 
+        // Non-vacuous guard: the unread filter must find the notification
+        // while it is unread (regression: read_at = NULL never matched).
+        $this->assertCount(1, $this->repo->forUser(5, ['unread' => true]));
+
         $read = $this->repo->markAsRead($id);
         $this->assertTrue($read);
 

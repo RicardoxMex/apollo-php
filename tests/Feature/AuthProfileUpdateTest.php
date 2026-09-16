@@ -9,7 +9,8 @@ use PDO;
 
 /**
  * Edición de perfil (PROFILE-01, REQ-12): PUT /auth/profile actualiza
- * first_name/last_name/phone/avatar, no permite cambiar el email, valida 422.
+ * first_name/last_name/phone/avatar, exige contraseña actual para cambiar el
+ * email (cubierto en ProfileEmailChangeTest), valida 422.
  * SQLite :memory: con migraciones reales, kernel real in-process.
  */
 class AuthProfileUpdateTest extends TestCase
@@ -70,6 +71,11 @@ class AuthProfileUpdateTest extends TestCase
 
     private function registrarYloguear(string $username, string $email): string
     {
+        // Purga el bucket de rate limit: cada método del test registra y
+        // loguea un usuario en la misma ventana (mismo patrón que
+        // EmailE2EFlowTest; el 429 real lo cubre RateLimitRoutesTest).
+        self::$pdo->prepare('DELETE FROM rate_limits')->execute();
+
         [$status] = $this->dispatchJson('POST', '/api/auth/register', [
             'username' => $username,
             'email' => $email,
@@ -108,15 +114,19 @@ class AuthProfileUpdateTest extends TestCase
         $this->assertSame('https://cdn.test/avatars/ana.png', $body['data']['user']['avatar']);
     }
 
-    public function test_update_profile_ignores_email_and_validates(): void
+    public function test_update_profile_requires_password_to_change_email(): void
     {
         $token = $this->registrarYloguear('perfil2', 'perfil2@test.local');
 
-        // El email no es editable: se ignora y se mantiene el original.
+        // Cambiar el email sin contraseña actual → 422 y el email no cambia.
         [$status, $body] = $this->dispatchJson('PUT', '/api/auth/profile', [
             'first_name' => 'Pepe',
             'email' => 'otro@test.local',
         ], $token);
+        $this->assertSame(422, $status);
+        $this->assertArrayHasKey('current_password', $body['errors']);
+
+        [$status, $body] = $this->dispatchJson('GET', '/api/auth/profile', [], $token);
         $this->assertSame(200, $status);
         $this->assertSame('perfil2@test.local', $body['data']['user']['email']);
 
