@@ -139,8 +139,10 @@ class TournamentService
         if ($format === null) {
             throw new \InvalidArgumentException('Formato inv�lido');
         }
-if ($maxParticipants < 2) {
-            throw new \InvalidArgumentException('El cupo m\u00e1ximo debe ser al menos 2');
+
+        $teamCountError = TournamentRules::teamCountError((string) $format, $maxParticipants);
+        if ($teamCountError !== null) {
+            throw new \InvalidArgumentException($teamCountError);
         }
 
         $clasificados = max(0, (int) ($data['clasificados_eliminacion'] ?? 0));
@@ -229,6 +231,21 @@ if ($editable === [] && $data !== []) {
             }
             if (!TournamentRules::esBracketCompleto($clasificados)) {
                 throw new \InvalidArgumentException('El cuadro final debe ser completo: usa una potencia de 2 (2, 4, 8, 16\u2026) para que ning\u00fan equipo se quede sin jornada');
+            }
+        }
+
+        // Cantidad de equipos válida por formato: solo cuando cambia la pareja
+        // formato + cupo (los torneos existentes se pueden seguir editando).
+        $formatoCambia = array_key_exists('format', $editable)
+            && $editable['format'] !== $tournament['format'];
+        $cupoCambia = array_key_exists('max_participants', $editable)
+            && (int) $editable['max_participants'] !== (int) $tournament['max_participants'];
+        if ($formatoCambia || $cupoCambia) {
+            $formatoFinal = (string) ($editable['format'] ?? $tournament['format']);
+            $cupoFinal = (int) ($editable['max_participants'] ?? $tournament['max_participants']);
+            $teamCountError = TournamentRules::teamCountError($formatoFinal, $cupoFinal);
+            if ($teamCountError !== null) {
+                throw new \InvalidArgumentException($teamCountError);
             }
         }
 
@@ -384,7 +401,8 @@ if ($editable === [] && $data !== []) {
 
     /**
      * Lifecycle transitions: publish (draft→open), start (open→live),
-     * finish (live→finished), pause (open→paused), resume (paused→open).
+     * finish (live→finished), pause (open→paused), resume (paused→open),
+     * unpublish (open→draft).
      */
     public function transition(int $actorId, int $id, string $action, ?Request $request = null): ?array
     {
@@ -400,11 +418,12 @@ if ($editable === [] && $data !== []) {
             'finish' => 'finished',
             'pause' => 'paused',
             'resume' => 'open',
-            default => throw new \InvalidArgumentException('Acción inválida: publish, start, finish, pause o resume'),
+            'unpublish' => 'draft',
+            default => throw new \InvalidArgumentException('Acción inválida: publish, start, finish, pause, resume o unpublish'),
         };
 
         // D2/EGATE-01: publicar o iniciar exige el email del organizador verificado.
-        // pause/resume quedan fuera del gate (D-F0-7).
+        // pause/resume/unpublish quedan fuera del gate (D-F0-7).
         if (in_array($action, ['publish', 'start'], true)) {
             $actor = User::find($actorId);
             if (!$actor || !$actor->hasVerifiedEmail()) {
@@ -428,6 +447,8 @@ if ($editable === [] && $data !== []) {
             ]);
         } elseif ($action === 'pause') {
             $check = TournamentRules::canPause($tournament);
+        } elseif ($action === 'unpublish') {
+            $check = TournamentRules::canUnpublish($tournament);
         } else {
             $check = TournamentRules::canResume($tournament);
         }
@@ -447,6 +468,7 @@ if ($editable === [] && $data !== []) {
         return match ($action) {
             'pause' => 'torneo:pausar',
             'resume' => 'torneo:reanudar',
+            'unpublish' => 'torneo:despublicar',
             default => "torneo:{$action}",
         };
     }

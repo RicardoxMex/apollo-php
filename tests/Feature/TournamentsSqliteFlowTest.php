@@ -448,4 +448,59 @@ class TournamentsSqliteFlowTest extends TestCase
         $this->assertSame('pending', $pending['status']);
         $this->assertNull($pending['scheduled_at']);
     }
+
+    /**
+     * Cantidad de equipos válida por formato (espejo del frontend): las
+     * eliminatorias solo potencias de 2, grupos potencias de 2 desde 8 y
+     * round-robin/liga cualquier cantidad desde 3. Se valida en create y update.
+     */
+    public function test_team_count_must_match_format(): void
+    {
+        $organizer = $this->createUser('org-cupo', 'cupo@test.local');
+
+        $single = self::$tournaments->create($organizer, [
+            'title' => 'Cupo Single', 'format' => 'eliminacion-directa', 'max_participants' => 8,
+        ]);
+        $this->assertSame(8, (int) $single['max_participants']);
+
+        $groups = self::$tournaments->create($organizer, [
+            'title' => 'Cupo Grupos', 'format' => 'grupos', 'max_participants' => 16,
+        ]);
+        $this->assertSame(16, (int) $groups['max_participants']);
+
+        $league = self::$tournaments->create($organizer, [
+            'title' => 'Cupo Liga', 'format' => 'liga', 'max_participants' => 5,
+        ]);
+        $this->assertSame(5, (int) $league['max_participants']);
+
+        $casos = [
+            ['eliminacion-directa', 6, 'potencia de 2'],
+            ['doble-eliminacion', 12, 'potencia de 2'],
+            ['grupos', 12, 'grupos de 4'],
+            ['round-robin', 2, 'al menos 3'],
+            ['liga', 2, 'al menos 3'],
+        ];
+        foreach ($casos as [$formato, $cupo, $fragmento]) {
+            try {
+                self::$tournaments->create($organizer, [
+                    'title' => "Cupo {$formato}", 'format' => $formato, 'max_participants' => $cupo,
+                ]);
+                $this->fail("{$formato} + {$cupo} debe rechazarse");
+            } catch (\InvalidArgumentException $e) {
+                $this->assertStringContainsString($fragmento, $e->getMessage());
+            }
+        }
+
+        // Update: cambiar el cupo a una cantidad inválida se rechaza.
+        try {
+            self::$tournaments->update($organizer, (int) $single['id'], ['max_participants' => 6]);
+            $this->fail('Actualizar a 6 en eliminación directa debe rechazarse');
+        } catch (\InvalidArgumentException $e) {
+            $this->assertStringContainsString('potencia de 2', $e->getMessage());
+        }
+
+        // Update: cambiar el cupo a una cantidad válida se acepta.
+        $ok = self::$tournaments->update($organizer, (int) $single['id'], ['max_participants' => 16]);
+        $this->assertSame(16, (int) $ok['max_participants']);
+    }
 }

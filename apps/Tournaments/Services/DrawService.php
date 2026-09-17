@@ -181,6 +181,296 @@ class DrawService
     }
 
     /**
+     * Añade participantes al sorteo ACTIVO sin regenerarlo: los cruces,
+     * partidos y resultados ya sorteados no se tocan.
+     * - bracket: rellena los cupos bye libres de la primera ronda; si no hay
+     *   cupos suficientes para todos, 409 pidiendo limpiar/regenerar.
+     * - groups/manual: reparte cada nuevo participante al grupo con menos
+     *   miembros (empate: el primero) y crea SOLO los partidos que faltan
+     *   contra su grupo, en una jornada nueva al final del calendario.
+     * Idempotente: los participantes ya sorteados se ignoran.
+     */
+    public function addParticipants(int $actorId, int $tournamentId, array $participantIds, ?Request $request = null): array
+    {
+        $pdo = $this->pdo();
+
+        $stmt = $pdo->prepare('SELECT * FROM tournaments WHERE id = ? AND deleted_at IS NULL');
+        $stmt->execute([$tournamentId]);
+        $tournament = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$tournament) {
+            throw new \RuntimeException('Torneo no encontrado', 404);
+        }
+        if ((int) $tournament['organizer_id'] !== $actorId) {
+            throw new \RuntimeException('No eres el organizador de este torneo', 403);
+        }
+        if (!in_array($tournament['status'], ['draft', 'open'], true)) {
+            throw new \RuntimeException('El sorteo solo se edita en borrador o abierto a inscripciones', 409);
+        }
+
+        $stmt = $pdo->prepare('SELECT * FROM draws WHERE tournament_id = ? ORDER BY version DESC LIMIT 1');
+        $stmt->execute([$tournamentId]);
+        $draw = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$draw) {
+            throw new \RuntimeException('Genera primero el sorteo', 409);
+        }
+
+        $ids = array_values(array_unique(array_filter(array_map('intval', $participantIds), fn ($id) => $id > 0)));
+        if (empty($ids)) {
+            throw new \InvalidArgumentException('Indica los participantes a añadir');
+        }
+
+        // Deben ser participantes aceptados del torneo.
+        $stmt = $pdo->prepare('SELECT id FROM tournament_participants WHERE tournament_id = ?');
+        $stmt->execute([$tournamentId]);
+        $validos = array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'id'));
+        $invalidos = array_diff($ids, $validos);
+        if (!empty($invalidos)) {
+            throw new \InvalidArgumentException('Los participantes no pertenecen a este torneo');
+        }
+
+        // Idempotente: solo se procesan los que aún no están en el sorteo.
+        $sorteados = $draw['type'] === 'bracket'
+            ? $this->bracketParticipantIds($pdo, (int) $draw['id'])
+            : $this->groupParticipantIds($pdo, (int) $draw['id']);
+        $nuevos = array_values(array_diff($ids, $sorteados));
+        if (empty($nuevos)) {
+            return $this->show($tournamentId);
+        }
+
+        $pdo->beginTransaction();
+        try {
+            if ($draw['type'] === 'bracket') {
+                $this->addToBracket($pdo, (int) $draw['id'], $nuevos);
+            } else {
+                $this->addToGroups($pdo, $tournamentId, (int) $draw['id'], $nuevos, (bool) ($tournament['ida_vuelta'] ?? false));
+            }
+            $pdo->commit();
+        } catch (\Throwable $e) {
+            $pdo->rollBack();
+            throw $e;
+        }
+
+        $this->audit->record($actorId, 'draw', (int) $draw['id'], 'draw:agregar', null, [
+            'participants' => $nuevos,
+        ], $request);
+
+        // Clasificación (M2): un calendario nuevo invalida la caché.
+        \Apps\Tournaments\Services\StandingsService::invalidate($tournamentId);
+
+        return $this->show($tournamentId);
+    }
+
+    /**
+     * Ids de participantes (tournament_participants) presentes en el bracket.
+     *
+     * @return int[]
+     */
+    private function bracketParticipantIds(PDO $pdo, int $drawId): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT dm.participant_a_id, dm.participant_b_id
+             FROM draw_matches dm
+             JOIN draw_rounds r ON r.id = dm.round_id
+             WHERE r.draw_id = ?'
+        );
+        $stmt->execute([$drawId]);
+
+        $ids = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $m) {
+            foreach ([$m['participant_a_id'], $m['participant_b_id']] as $id) {
+                if ($id !== null) {
+                    $ids[(int) $id] = true;
+                }
+            }
+        }
+        return array_keys($ids);
+    }
+
+    /**
+     * Ids de participantes presentes en los grupos del sorteo.
+     *
+     * @return int[]
+     */
+    private function groupParticipantIds(PDO $pdo, int $drawId): array
+    {
+        $stmt = $pdo->prepare(
+            'SELECT dgp.tournament_participant_id
+             FROM draw_group_participants dgp
+             JOIN draw_groups g ON g.id = dgp.group_id
+             WHERE g.draw_id = ?'
+        );
+        $stmt->execute([$drawId]);
+        return array_map('intval', array_column($stmt->fetchAll(PDO::FETCH_ASSOC), 'tournament_participant_id'));
+    }
+
+    /**
+     * Rellena cupos bye libres de la primera ronda con los nuevos
+     * participantes. Un cupo es libre solo si su partido (draw_match + match
+     * oficial) no tiene estado jugado, ganador ni marcador: nunca se pisa un
+     * juego ya registrado.
+     */
+    private function addToBracket(PDO $pdo, int $drawId, array $nuevos): void
+    {
+        $stmt = $pdo->prepare('SELECT MIN(round_number) FROM draw_rounds WHERE draw_id = ?');
+        $stmt->execute([$drawId]);
+        $primeraRonda = (int) $stmt->fetchColumn();
+
+        $stmt = $pdo->prepare(
+            'SELECT dm.id, dm.participant_a_id, dm.participant_b_id
+             FROM draw_matches dm
+             JOIN draw_rounds r ON r.id = dm.round_id
+             WHERE r.draw_id = ? AND r.round_number = ?
+             ORDER BY dm.match_number ASC'
+        );
+        $stmt->execute([$drawId, $primeraRonda]);
+
+        $cupos = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $m) {
+            $a = $m['participant_a_id'] !== null ? (int) $m['participant_a_id'] : null;
+            $b = $m['participant_b_id'] !== null ? (int) $m['participant_b_id'] : null;
+            // Solo byes (un lado ocupado y el otro libre) sin juego registrado.
+            if (($a === null) === ($b === null)) {
+                continue;
+            }
+            if (!$this->sinJuegoRegistrado($pdo, (int) $m['id'])) {
+                continue;
+            }
+            $cupos[] = ['draw_match_id' => (int) $m['id'], 'slot' => $a === null ? 'a' : 'b'];
+        }
+
+        if (count($nuevos) > count($cupos)) {
+            throw new \RuntimeException('El cuadro no tiene cupos libres (bye) para añadir a los nuevos participantes: limpia y regenera el sorteo', 409);
+        }
+
+        foreach ($nuevos as $i => $pid) {
+            $cupo = $cupos[$i];
+            $columna = $cupo['slot'] === 'b' ? 'participant_b_id' : 'participant_a_id';
+            $pdo->prepare("UPDATE draw_matches SET {$columna} = ? WHERE id = ?")
+                ->execute([$pid, $cupo['draw_match_id']]);
+            $pdo->prepare("UPDATE matches SET {$columna} = ?, updated_at = ? WHERE draw_match_id = ?")
+                ->execute([$pid, date('Y-m-d H:i:s'), $cupo['draw_match_id']]);
+        }
+    }
+
+    /**
+     * ¿El partido del bracket no tiene nada jugado? (estado pendiente/programado,
+     * sin ganador y sin marcadores). Fuente única: matches oficiales.
+     */
+    private function sinJuegoRegistrado(PDO $pdo, int $drawMatchId): bool
+    {
+        $stmt = $pdo->prepare(
+            'SELECT dm.status AS draw_status, dm.winner_participant_id,
+                    m.status AS match_status, m.winner_participant_id AS match_winner,
+                    (SELECT COUNT(*) FROM match_scores ms WHERE ms.match_id = m.id) AS marcadores
+             FROM draw_matches dm
+             LEFT JOIN matches m ON m.draw_match_id = dm.id
+             WHERE dm.id = ?'
+        );
+        $stmt->execute([$drawMatchId]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        if (!$row) {
+            return false;
+        }
+
+        $sinEstadoJugado = fn ($estado) => $estado === null || $estado === '' || in_array($estado, ['pending', 'scheduled'], true);
+
+        return $sinEstadoJugado($row['draw_status'])
+            && $sinEstadoJugado($row['match_status'])
+            && $row['winner_participant_id'] === null
+            && $row['match_winner'] === null
+            && (int) $row['marcadores'] === 0;
+    }
+
+    /**
+     * Reparte los nuevos participantes en los grupos existentes (grupo con
+     * menos miembros) y crea solo los partidos que faltan: parejas contra su
+     * grupo que aún no existen, en una jornada nueva al final del calendario.
+     * Los partidos y grupos ya existentes quedan intactos.
+     */
+    private function addToGroups(PDO $pdo, int $tournamentId, int $drawId, array $nuevos, bool $idaVuelta): void
+    {
+        $stmt = $pdo->prepare('SELECT id, position FROM draw_groups WHERE draw_id = ? ORDER BY position ASC');
+        $stmt->execute([$drawId]);
+        $grupos = $stmt->fetchAll(PDO::FETCH_ASSOC);
+        if (empty($grupos)) {
+            throw new \RuntimeException('El sorteo no tiene grupos', 409);
+        }
+
+        // Membresía actual por grupo (en orden de posición).
+        $miembros = [];
+        $pivot = $pdo->prepare('SELECT tournament_participant_id FROM draw_group_participants WHERE group_id = ? ORDER BY position ASC');
+        foreach ($grupos as $g) {
+            $pivot->execute([$g['id']]);
+            $miembros[(int) $g['id']] = array_map('intval', array_column($pivot->fetchAll(PDO::FETCH_ASSOC), 'tournament_participant_id'));
+        }
+
+        // Reparto: cada nuevo participante va al grupo con menos miembros.
+        $insertPivot = $pdo->prepare('INSERT INTO draw_group_participants (group_id, tournament_participant_id, position) VALUES (?, ?, ?)');
+        $nuevosPorGrupo = [];
+        foreach ($nuevos as $pid) {
+            $destino = null;
+            $menor = PHP_INT_MAX;
+            foreach ($grupos as $g) {
+                $total = count($miembros[(int) $g['id']]);
+                if ($total < $menor) {
+                    $menor = $total;
+                    $destino = (int) $g['id'];
+                }
+            }
+            $insertPivot->execute([$destino, $pid, count($miembros[$destino]) + 1]);
+            $miembros[$destino][] = $pid;
+            $nuevosPorGrupo[$destino][] = $pid;
+        }
+
+        // Parejas ya existentes en el torneo (cualquier partido) para no duplicar.
+        $stmt = $pdo->prepare('SELECT participant_a_id, participant_b_id FROM matches WHERE tournament_id = ?');
+        $stmt->execute([$tournamentId]);
+        $existentes = [];
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $m) {
+            $a = (int) $m['participant_a_id'];
+            $b = (int) $m['participant_b_id'];
+            if ($a > 0 && $b > 0) {
+                $existentes[$this->pairKey($a, $b)] = true;
+            }
+        }
+
+        $stmt = $pdo->prepare('SELECT COALESCE(MAX(round_number), 0) AS r, COALESCE(MAX(match_number), 0) AS m FROM matches WHERE tournament_id = ?');
+        $stmt->execute([$tournamentId]);
+        $max = $stmt->fetch(PDO::FETCH_ASSOC);
+        $nuevaRonda = (int) $max['r'] + 1;
+        $matchNumber = (int) $max['m'];
+
+        $insertMatch = $pdo->prepare(
+            "INSERT INTO matches (tournament_id, draw_match_id, round_number, match_number, participant_a_id, participant_b_id, status, created_at, updated_at)
+             VALUES (?, NULL, ?, ?, ?, ?, 'pending', ?, ?)"
+        );
+        $now = date('Y-m-d H:i:s');
+
+        foreach ($nuevosPorGrupo as $groupId => $recienLlegados) {
+            $recien = array_fill_keys($recienLlegados, true);
+            foreach (BracketGenerator::generateRoundRobin($miembros[$groupId], $idaVuelta) as $m) {
+                $a = (int) $m['participant_a_id'];
+                $b = (int) $m['participant_b_id'];
+                // Solo las parejas que involucran a un nuevo participante.
+                if (!isset($recien[$a]) && !isset($recien[$b])) {
+                    continue;
+                }
+                $key = $this->pairKey($a, $b);
+                if (isset($existentes[$key])) {
+                    continue;
+                }
+                $existentes[$key] = true;
+                $insertMatch->execute([$tournamentId, $nuevaRonda, ++$matchNumber, $a, $b, $now, $now]);
+            }
+        }
+    }
+
+    private function pairKey(int $a, int $b): string
+    {
+        return $a < $b ? "{$a}-{$b}" : "{$b}-{$a}";
+    }
+
+    /**
      * Active draw (latest version) ready for the frontend: rounds with fixtures
      * (a/b, status, scores, winner) and advances.
      */

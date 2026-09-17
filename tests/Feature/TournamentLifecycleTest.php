@@ -183,6 +183,31 @@ class TournamentLifecycleTest extends TestCase
         $this->assertSame(409, $status, 'Solo se reanuda lo pausado');
     }
 
+    public function test_unpublish_returns_open_tournament_to_draft(): void
+    {
+        [$token] = $this->usuarioVerificado('org_ciclo_5', 'org.ciclo5@test.local');
+        $tournamentId = $this->crearTorneo($token, 'Copa Borrador');
+
+        // draft → unpublish: 409 (solo desde open).
+        [$status] = $this->dispatchJson('POST', "/api/tournaments/{$tournamentId}/unpublish", [], $token);
+        $this->assertSame(409, $status, 'Un borrador no vuelve a borrador');
+
+        [$status] = $this->dispatchJson('POST', "/api/tournaments/{$tournamentId}/publish", [], $token);
+        $this->assertSame(200, $status, 'Publicar');
+
+        // Paso atrás sin gate de email verificado (solo publish/start lo exigen).
+        self::$pdo->prepare('UPDATE users SET email_verified_at = NULL WHERE username = ?')->execute(['org_ciclo_5']);
+
+        [$status, $body] = $this->dispatchJson('POST', "/api/tournaments/{$tournamentId}/unpublish", [], $token);
+        $this->assertSame(200, $status, 'Volver a borrador sin gate de email');
+        $this->assertSame('draft', $body['data']['status']);
+
+        // live → unpublish: 409 (no hay marcha atrás con el torneo en vivo).
+        self::$pdo->prepare("UPDATE tournaments SET status = 'live' WHERE id = ?")->execute([$tournamentId]);
+        [$status] = $this->dispatchJson('POST', "/api/tournaments/{$tournamentId}/unpublish", [], $token);
+        $this->assertSame(409, $status, 'Un torneo en vivo no vuelve a borrador');
+    }
+
     public function test_bracket_finish_still_requires_final_winner(): void
     {
         [$token] = $this->usuarioVerificado('org_ciclo_4', 'org.ciclo4@test.local');

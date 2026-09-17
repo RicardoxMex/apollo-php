@@ -80,6 +80,32 @@ class RegistrationFlowTest extends SqliteTestCase
         return (int) $stmt->fetchColumn();
     }
 
+    private function participantIdOf(int $tournamentId, int $teamId): int
+    {
+        $stmt = self::$pdo->prepare('SELECT id FROM tournament_participants WHERE tournament_id = ? AND team_id = ?');
+        $stmt->execute([$tournamentId, $teamId]);
+        return (int) $stmt->fetchColumn();
+    }
+
+    private function insertarPartido(int $tournamentId, ?int $a, ?int $b, string $status, ?int $winner = null): int
+    {
+        $stmt = self::$pdo->prepare(
+            'INSERT INTO matches (tournament_id, round_number, match_number, participant_a_id, participant_b_id, winner_participant_id, status, created_at, updated_at)
+             VALUES (?, 1, ?, ?, ?, ?, ?, ?, ?)'
+        );
+        $stmt->execute([
+            $tournamentId,
+            random_int(1000, 999999),
+            $a,
+            $b,
+            $winner,
+            $status,
+            date('Y-m-d H:i:s'),
+            date('Y-m-d H:i:s'),
+        ]);
+        return (int) self::$pdo->lastInsertId();
+    }
+
     public function test_rejected_registration_can_reapply_and_be_accepted(): void
     {
         $organizer = $this->createUser('org_reg1', 'org.reg1@test.local');
@@ -151,34 +177,99 @@ class RegistrationFlowTest extends SqliteTestCase
         $applicant1 = $this->createUser('app_reg3a', 'app.reg3a@test.local');
         $applicant2 = $this->createUser('app_reg3b', 'app.reg3b@test.local');
         $applicant3 = $this->createUser('app_reg3c', 'app.reg3c@test.local');
+        $applicant4 = $this->createUser('app_reg3d', 'app.reg3d@test.local');
         $team1 = $this->createTeam('Cupo Uno');
         $team2 = $this->createTeam('Cupo Dos');
         $team3 = $this->createTeam('Cupo Tres');
+        $team4 = $this->createTeam('Cupo Cuatro');
 
-        $tournament = $this->createTournament($organizer, ['title' => 'Copa Cupo', 'max_participants' => 2]);
+        $tournament = $this->createTournament($organizer, ['title' => 'Copa Cupo', 'format' => 'round-robin', 'max_participants' => 3]);
         $tournamentId = (int) $tournament['id'];
         self::$tournaments->transition($organizer, $tournamentId, 'publish');
 
         $r1 = self::$registrations->apply($applicant1, $tournamentId, ['team_id' => $team1]);
         $r2 = self::$registrations->apply($applicant2, $tournamentId, ['team_id' => $team2]);
+        $r3 = self::$registrations->apply($applicant3, $tournamentId, ['team_id' => $team3]);
         self::$registrations->decide($organizer, $tournamentId, (int) $r1['id'], ['action' => 'accepted']);
         self::$registrations->decide($organizer, $tournamentId, (int) $r2['id'], ['action' => 'accepted']);
-        $this->assertSame(2, $this->participantCount($tournamentId));
+        self::$registrations->decide($organizer, $tournamentId, (int) $r3['id'], ['action' => 'accepted']);
+        $this->assertSame(3, $this->participantCount($tournamentId));
 
         // El organizador cancela una aceptada: se borra el participante y se notifica.
         $cancelled = self::$registrations->cancel($organizer, $tournamentId, (int) $r1['id']);
         $this->assertSame('cancelled', $cancelled['status']);
-        $this->assertSame(1, $this->participantCount($tournamentId), 'La cancelación libera el cupo');
+        $this->assertSame(2, $this->participantCount($tournamentId), 'La cancelación libera el cupo');
 
         $stmt = self::$pdo->prepare("SELECT COUNT(*) FROM notifications WHERE user_id = ? AND type = 'registro.cancelado'");
         $stmt->execute([$applicant1]);
         $this->assertSame(1, (int) $stmt->fetchColumn(), 'El solicitante recibe la notificación de cancelación');
 
-        // El cupo liberado permite aceptar a un tercer equipo.
-        $r3 = self::$registrations->apply($applicant3, $tournamentId, ['team_id' => $team3]);
-        $accepted = self::$registrations->decide($organizer, $tournamentId, (int) $r3['id'], ['action' => 'accepted']);
+        // El cupo liberado permite aceptar a un cuarto equipo.
+        $r4 = self::$registrations->apply($applicant4, $tournamentId, ['team_id' => $team4]);
+        $accepted = self::$registrations->decide($organizer, $tournamentId, (int) $r4['id'], ['action' => 'accepted']);
         $this->assertSame('accepted', $accepted['status']);
-        $this->assertSame(2, $this->participantCount($tournamentId));
+        $this->assertSame(3, $this->participantCount($tournamentId));
+    }
+
+    /**
+     * Cancelar una aceptada limpia el calendario del participante: sin esto la
+     * FK (ON DELETE SET NULL) dejaba cruces huérfanos «Bye vs Bye».
+     */
+    public function test_organizer_cancel_accepted_purges_participant_schedule(): void
+    {
+        $organizer = $this->createUser('org_cal1', 'org.cal1@test.local');
+        $applicant1 = $this->createUser('app_cal1a', 'app.cal1a@test.local');
+        $applicant2 = $this->createUser('app_cal1b', 'app.cal1b@test.local');
+        $applicant3 = $this->createUser('app_cal1c', 'app.cal1c@test.local');
+        $team1 = $this->createTeam('Sale FC');
+        $team2 = $this->createTeam('Queda FC');
+        $team3 = $this->createTeam('Intacto FC');
+
+        $tournament = $this->createTournament($organizer, ['title' => 'Copa Calendario', 'max_participants' => 4]);
+        $tournamentId = (int) $tournament['id'];
+        self::$tournaments->transition($organizer, $tournamentId, 'publish');
+
+        $r1 = self::$registrations->apply($applicant1, $tournamentId, ['team_id' => $team1]);
+        $r2 = self::$registrations->apply($applicant2, $tournamentId, ['team_id' => $team2]);
+        $r3 = self::$registrations->apply($applicant3, $tournamentId, ['team_id' => $team3]);
+        self::$registrations->decide($organizer, $tournamentId, (int) $r1['id'], ['action' => 'accepted']);
+        self::$registrations->decide($organizer, $tournamentId, (int) $r2['id'], ['action' => 'accepted']);
+        self::$registrations->decide($organizer, $tournamentId, (int) $r3['id'], ['action' => 'accepted']);
+
+        $p1 = $this->participantIdOf($tournamentId, $team1);
+        $p2 = $this->participantIdOf($tournamentId, $team2);
+        $p3 = $this->participantIdOf($tournamentId, $team3);
+
+        $sinResultado = $this->insertarPartido($tournamentId, $p1, $p2, 'pending');
+        $conResultado = $this->insertarPartido($tournamentId, $p2, $p1, 'completed', $p1);
+        $deTerceros = $this->insertarPartido($tournamentId, $p2, $p3, 'pending');
+
+        self::$registrations->cancel($organizer, $tournamentId, (int) $r1['id']);
+
+        // El partido sin resultado del participante que sale se elimina.
+        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM matches WHERE id = ?');
+        $stmt->execute([$sinResultado]);
+        $this->assertSame(0, (int) $stmt->fetchColumn(), 'El partido sin resultado se borra con el participante');
+
+        // El partido con resultado se conserva como historial cancelado.
+        $stmt = self::$pdo->prepare('SELECT status, winner_participant_id FROM matches WHERE id = ?');
+        $stmt->execute([$conResultado]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('cancelled', $row['status']);
+        $this->assertNull($row['winner_participant_id']);
+
+        // Los partidos de otros participantes no se tocan.
+        $stmt = self::$pdo->prepare('SELECT status, participant_a_id, participant_b_id FROM matches WHERE id = ?');
+        $stmt->execute([$deTerceros]);
+        $row = $stmt->fetch(PDO::FETCH_ASSOC);
+        $this->assertSame('pending', $row['status']);
+        $this->assertSame($p2, (int) $row['participant_a_id']);
+        $this->assertSame($p3, (int) $row['participant_b_id']);
+
+        // No quedan cruces huérfanos (los dos lados nulos) en el torneo.
+        $stmt = self::$pdo->prepare('SELECT COUNT(*) FROM matches WHERE tournament_id = ? AND participant_a_id IS NULL AND participant_b_id IS NULL');
+        $stmt->execute([$tournamentId]);
+        $this->assertSame(0, (int) $stmt->fetchColumn(), 'Sin partidos «Bye vs Bye»');
     }
 
     public function test_applicant_cannot_cancel_accepted_registration(): void

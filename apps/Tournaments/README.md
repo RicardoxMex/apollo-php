@@ -23,7 +23,10 @@ App modular del dominio de torneos para **Apollo Framework** (`Apps\Tournaments`
 | POST | `/api/tournaments/{id}/publish` | draft→open (público sin mínimo; privado ≥2 aceptados) |
 | POST | `/api/tournaments/{id}/start` | open→live (requiere sorteo) |
 | POST | `/api/tournaments/{id}/finish` | live→finished (requiere final con ganador) |
+| POST | `/api/tournaments/{id}/pause` / `resume` | open↔paused (pausar/reanudar inscripciones) |
+| POST | `/api/tournaments/{id}/unpublish` | open→draft (volver a borrador para reeditar) |
 | POST | `/api/tournaments/{id}/draw` | Generar sorteo: `{"type":"bracket"}` (o `groups` con `num_groups`); crea partidos oficiales 1:1 y avances |
+| POST | `/api/tournaments/{id}/draw/participants` | Añadir participantes a un sorteo existente sin regenerarlo: brackets rellenan byes; grupos suman al grupo más pequeño y crean solo sus partidos (`{"participant_ids":[N]}`) |
 | GET | `/api/tournaments/{id}/registrations` | Solicitudes (solo organizador, filtro `status`) |
 | POST | `/api/tournaments/{id}/registrations` | Aplicar: `{"team_id":N}` o `{"player_id":N}` (organizador puede inscribir directo en draft) |
 | POST | `/api/tournaments/{id}/registrations/{rid}/decide` | Moderación: `{"action":"accepted"}` (crea participante con seed) o `"rejected"` |

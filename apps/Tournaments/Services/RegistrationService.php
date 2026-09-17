@@ -217,6 +217,14 @@ class RegistrationService
         try {
             if ($status === 'accepted') {
                 // Libera cupo: elimina el participante resuelto de la solicitud.
+                // Antes de borrarlo se limpian SUS partidos: si no, la FK
+                // (ON DELETE SET NULL) dejaba cruces huérfanos («Bye vs Bye»).
+                $stmt = $pdo->prepare('SELECT id FROM tournament_participants WHERE registration_id = ? AND tournament_id = ?');
+                $stmt->execute([$registrationId, $tournamentId]);
+                $participantId = (int) $stmt->fetchColumn();
+                if ($participantId > 0) {
+                    $this->purgeParticipantSchedule($pdo, $tournamentId, $participantId);
+                }
                 $pdo->prepare('DELETE FROM tournament_participants WHERE registration_id = ? AND tournament_id = ?')
                     ->execute([$registrationId, $tournamentId]);
             }
@@ -227,6 +235,9 @@ class RegistrationService
             $pdo->rollBack();
             throw $e;
         }
+
+        // Clasificación (M2): sin participante cambian los partidos → invalida caché.
+        \Apps\Tournaments\Services\StandingsService::invalidate($tournamentId);
 
         $this->audit->record($actorId, 'registration', $registrationId, 'inscripcion:cancelar', $registration, null, $request);
 
@@ -256,6 +267,50 @@ class RegistrationService
         }
 
         return $this->show($registrationId);
+    }
+
+    /**
+     * Saca del calendario a un participante que abandona el torneo (su
+     * inscripción aceptada se cancela). Sin esto, la FK
+     * `matches.participant_a_id/b_id ON DELETE SET NULL` dejaba partidos
+     * huérfanos (los dos lados NULL) que la UI mostraba como «Bye vs Bye».
+     *
+     * - Partido sin resultado (sin marcador ni ganador): se elimina con sus
+     *   marcadores/stats de jugador.
+     * - Partido con resultado: se conserva como historial, marcado `cancelled`
+     *   y sin ganador.
+     * - Cupos del sorteo (bracket): el cruce vuelve a quedar libre.
+     * No toca partidos de otros participantes.
+     */
+    private function purgeParticipantSchedule(PDO $pdo, int $tournamentId, int $participantId): void
+    {
+        $stmt = $pdo->prepare(
+            'SELECT m.id, m.winner_participant_id,
+                    (SELECT COUNT(*) FROM match_scores ms WHERE ms.match_id = m.id) AS marcadores
+             FROM matches m
+             WHERE m.tournament_id = ? AND (m.participant_a_id = ? OR m.participant_b_id = ?)'
+        );
+        $stmt->execute([$tournamentId, $participantId, $participantId]);
+
+        $now = date('Y-m-d H:i:s');
+        foreach ($stmt->fetchAll(PDO::FETCH_ASSOC) as $m) {
+            $matchId = (int) $m['id'];
+            $conResultado = (int) $m['marcadores'] > 0 || $m['winner_participant_id'] !== null;
+
+            if ($conResultado) {
+                $pdo->prepare("UPDATE matches SET status = 'cancelled', winner_participant_id = NULL, updated_at = ? WHERE id = ?")
+                    ->execute([$now, $matchId]);
+                continue;
+            }
+
+            $pdo->prepare('DELETE FROM match_player_stats WHERE match_id = ?')->execute([$matchId]);
+            $pdo->prepare('DELETE FROM match_scores WHERE match_id = ?')->execute([$matchId]);
+            $pdo->prepare('DELETE FROM matches WHERE id = ?')->execute([$matchId]);
+        }
+
+        // Cupos del sorteo (bracket): al salir el participante, el cruce queda libre.
+        $pdo->prepare('UPDATE draw_matches SET participant_a_id = NULL WHERE participant_a_id = ?')->execute([$participantId]);
+        $pdo->prepare('UPDATE draw_matches SET participant_b_id = NULL WHERE participant_b_id = ?')->execute([$participantId]);
     }
 
     /**

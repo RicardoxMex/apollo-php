@@ -189,6 +189,11 @@ class TournamentController extends Controller
         return $this->transition((int) $id, 'resume');
     }
 
+    public function unpublish($id)
+    {
+        return $this->transition((int) $id, 'unpublish');
+    }
+
     private function transition(int $id, string $action)
     {
         try {
@@ -199,6 +204,7 @@ class TournamentController extends Controller
             $message = match ($action) {
                 'pause' => 'Torneo pausado',
                 'resume' => 'Torneo reanudado',
+                'unpublish' => 'Torneo vuelto a borrador',
                 default => "Torneo {$action}ado",
             };
             return $this->json(['success' => true, 'data' => $tournament, 'message' => $message]);
@@ -319,6 +325,25 @@ class TournamentController extends Controller
             return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 403);
         } catch (\Throwable $e) {
             return $this->json(['error' => 'No se pudo limpiar el sorteo', 'message' => $e->getMessage()], 500);
+        }
+    }
+
+    public function addDrawParticipants($tournamentId)
+    {
+        try {
+            $data = $this->validate($this->body(), [
+                'participant_ids' => 'required|array',
+            ]);
+            $draw = $this->draws->addParticipants($this->actorId(), (int) $tournamentId, $data['participant_ids'], $this->request);
+            return $this->json(['success' => true, 'data' => $draw, 'message' => 'Participantes añadidos al sorteo']);
+        } catch (ValidationException $e) {
+            return $this->json(['error' => 'Validación', 'errors' => $e->errors()], 422);
+        } catch (\InvalidArgumentException $e) {
+            return $this->json(['error' => 'Validación', 'message' => $e->getMessage()], 400);
+        } catch (\RuntimeException $e) {
+            return $this->json(['error' => $e->getMessage()], (int) $e->getCode() ?: 409);
+        } catch (\Throwable $e) {
+            return $this->json(['error' => 'No se pudo añadir al sorteo', 'message' => $e->getMessage()], 500);
         }
     }
 

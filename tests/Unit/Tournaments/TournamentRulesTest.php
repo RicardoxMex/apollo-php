@@ -132,6 +132,19 @@ class TournamentRulesTest extends TestCase
         $this->assertFalse(TournamentRules::canResume(['status' => 'draft'])['ok']);
     }
 
+    public function test_can_unpublish_only_open(): void
+    {
+        $this->assertTrue(TournamentRules::canUnpublish(['status' => 'open'])['ok']);
+
+        $this->assertFalse(TournamentRules::canUnpublish(['status' => 'draft'])['ok']);
+        $this->assertFalse(TournamentRules::canUnpublish(['status' => 'paused'])['ok']);
+        $this->assertFalse(TournamentRules::canUnpublish(['status' => 'live'])['ok']);
+        $this->assertFalse(TournamentRules::canUnpublish(['status' => 'finished'])['ok']);
+
+        $r = TournamentRules::canUnpublish(['status' => 'live']);
+        $this->assertStringContainsString('borrador', $r['reason']);
+    }
+
     public function test_editable_fields_by_status(): void
     {
         $draft = TournamentRules::editableFields('draft');
@@ -224,5 +237,49 @@ class TournamentRulesTest extends TestCase
         $this->assertFalse(TournamentRules::esBracketCompleto(5));
         $this->assertFalse(TournamentRules::esBracketCompleto(6));
         $this->assertFalse(TournamentRules::esBracketCompleto(12));
+    }
+
+    public function test_team_count_rules_per_format(): void
+    {
+        $validos = [
+            'eliminacion-directa' => [4, 8, 16, 32, 64, 128],
+            'doble-eliminacion' => [4, 8, 16, 32],
+            'round-robin' => [3, 4, 5, 6, 7, 8],
+            'grupos' => [8, 16, 32, 64, 128],
+            'liga' => [3, 4, 5, 6, 7, 8],
+        ];
+        $invalidos = [
+            'eliminacion-directa' => [0, 1, 2, 3, 5, 6, 7, 12],
+            'doble-eliminacion' => [0, 2, 3, 6, 12],
+            'round-robin' => [0, 1, 2],
+            'grupos' => [0, 2, 4, 6, 7, 10, 12, 24],
+            'liga' => [0, 1, 2],
+        ];
+
+        foreach ($validos as $formato => $cantidades) {
+            foreach ($cantidades as $n) {
+                $this->assertNull(TournamentRules::teamCountError($formato, $n), "{$formato} + {$n} debe ser válido");
+            }
+        }
+        foreach ($invalidos as $formato => $cantidades) {
+            foreach ($cantidades as $n) {
+                $this->assertNotNull(TournamentRules::teamCountError($formato, $n), "{$formato} + {$n} debe ser inválido");
+            }
+        }
+
+        $this->assertStringContainsString('potencia de 2', (string) TournamentRules::teamCountError('eliminacion-directa', 6));
+        $this->assertStringContainsString('grupos de 4', (string) TournamentRules::teamCountError('grupos', 12));
+        $this->assertStringContainsString('al menos 3', (string) TournamentRules::teamCountError('round-robin', 2));
+        $this->assertStringContainsString('al menos 3', (string) TournamentRules::teamCountError('liga', 2));
+
+        // Acepta tanto el vocabulario API como el ENUM de la BD.
+        $this->assertNull(TournamentRules::teamCountError('single_elimination', 8));
+        $this->assertNull(TournamentRules::teamCountError('double_elimination', 16));
+        $this->assertNotNull(TournamentRules::teamCountError('single_elimination', 6));
+        $this->assertNotNull(TournamentRules::teamCountError('groups', 12));
+        $this->assertNull(TournamentRules::teamCountError('groups', 16));
+        $this->assertNull(TournamentRules::teamCountError('round_robin', 5));
+        $this->assertNull(TournamentRules::teamCountError('league', 3));
+        $this->assertNull(TournamentRules::teamCountError('formato-desconocido', 6));
     }
 }

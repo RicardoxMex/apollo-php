@@ -10,9 +10,10 @@
 // Uploads:                     POST   /api/uploads (auth, servicio nativo core/Uploads)
 //                              GET    /api/uploads/{path} (público, sirve el archivo)
 //
-// Status cycle: POST /publish (draft→open), /start (open→live), /finish (live→finished)
+// Status cycle: POST /publish (draft→open), /start (open→live), /finish (live→finished),
+//                /pause (open→paused), /resume (paused→open), /unpublish (open→draft)
 // Registrations: POST /{id}/registrations (apply), /{rid}/decide (moderation), /{rid}/cancel
-// Draw:          POST /{id}/draw (bracket | groups | manual)
+// Draw:          POST /{id}/draw (bracket | groups | manual), POST /{id}/draw/participants (add to existing)
 // Matches:       PUT /{id}/matches/{mid} (status, scores, winner; propagates to the bracket)
 
 use Apps\Tournaments\Controllers\AuditLogController;
@@ -60,7 +61,9 @@ $router->group(['middleware' => ['auth', 'cors']], function ($router) {
     $router->post('/tournaments/{id}/finish', [TournamentController::class, 'finish'])->where(['id' => '\d+'])->name('tournaments.finish');
     $router->post('/tournaments/{id}/pause', [TournamentController::class, 'pause'])->where(['id' => '\d+'])->name('tournaments.pause');
     $router->post('/tournaments/{id}/resume', [TournamentController::class, 'resume'])->where(['id' => '\d+'])->name('tournaments.resume');
+    $router->post('/tournaments/{id}/unpublish', [TournamentController::class, 'unpublish'])->where(['id' => '\d+'])->name('tournaments.unpublish');
     $router->post('/tournaments/{tournamentId}/draw', [TournamentController::class, 'generateDraw'])->where(['tournamentId' => '\d+'])->name('tournaments.draw.generate');
+    $router->post('/tournaments/{tournamentId}/draw/participants', [TournamentController::class, 'addDrawParticipants'])->where(['tournamentId' => '\d+'])->name('tournaments.draw.add');
     $router->delete('/tournaments/{tournamentId}/draw', [TournamentController::class, 'clearDraw'])->where(['tournamentId' => '\d+'])->name('tournaments.draw.delete');
     $router->post('/tournaments/{tournamentId}/duplicate', [TournamentController::class, 'duplicate'])->where(['tournamentId' => '\d+'])->name('tournaments.duplicate');
 

@@ -120,6 +120,20 @@ class TournamentRules
     }
 
     /**
+     * Transition open → draft (volver a borrador). Sin restricción: es un paso
+     * atrás para reeditar campos estructurales; el torneo deja de ser público.
+     * live/finished no vuelven a borrador (hay juego en curso o historial).
+     */
+    public static function canUnpublish(array $tournament): array
+    {
+        if (($tournament['status'] ?? '') !== 'open') {
+            return ['ok' => false, 'reason' => 'Solo se pueden volver a borrador los torneos abiertos a inscripciones'];
+        }
+
+        return ['ok' => true];
+    }
+
+    /**
      * Editable fields depending on the state (mirror of lib/edicion.ts):
      * - draft: all
      * - open: structural fields locked (sport, format, max_participants,
@@ -235,6 +249,71 @@ class TournamentRules
         if ($clasificados === 0) {
             return true;
         }
-        return $clasificados >= 2 && ($clasificados & ($clasificados - 1)) === 0;
+        return self::esPotenciaDeDos($clasificados);
+    }
+
+    /** ¿n es potencia de 2 (2, 4, 8, 16…)? */
+    public static function esPotenciaDeDos(int $n): bool
+    {
+        return $n >= 2 && ($n & ($n - 1)) === 0;
+    }
+
+    /**
+     * Cantidades de equipos que el motor actual puede procesar de extremo a
+     * extremo por formato (espejo del frontend `lib/formatos.ts`):
+     *  - eliminación directa / doble: potencia de 2 (el cuadro queda completo).
+     *  - grupos: grupos de 4 con 2 clasificados → potencia de 2 desde 8.
+     *  - round-robin / liga: cualquier cantidad desde 3 (impares incluidas).
+     */
+    private const FORMAT_TEAM_RULES = [
+        'eliminacion-directa' => ['min_teams' => 4, 'power_of_two' => true],
+        'doble-eliminacion' => ['min_teams' => 4, 'power_of_two' => true],
+        'round-robin' => ['min_teams' => 3, 'power_of_two' => false],
+        'grupos' => [
+            'min_teams' => 8,
+            'power_of_two' => true,
+            'group_size' => 4,
+            'qualified_per_group' => 2,
+        ],
+        'liga' => ['min_teams' => 3, 'power_of_two' => false],
+    ];
+
+    /** Reglas de cantidad de equipos de un formato (acepta valor API o ENUM). */
+    public static function teamCountRules(string $format): ?array
+    {
+        $api = Mappings::formatToApi($format) ?? $format;
+        return self::FORMAT_TEAM_RULES[$api] ?? null;
+    }
+
+    /**
+     * Error (texto ES) si la cantidad de equipos no es válida para el formato;
+     * null si es válida. Mismos mensajes que el frontend `lib/formatos.ts`.
+     */
+    public static function teamCountError(string $format, int $teams): ?string
+    {
+        $api = Mappings::formatToApi($format) ?? $format;
+        $rules = self::FORMAT_TEAM_RULES[$api] ?? null;
+        if ($rules === null) {
+            return null;
+        }
+
+        if ($teams < $rules['min_teams']) {
+            if ($api === 'grupos') {
+                return 'Fase de grupos se arma con grupos de 4 y 2 clasificados por grupo: usa 8, 16, 32, 64… equipos.';
+            }
+            if (!empty($rules['power_of_two'])) {
+                return 'Este formato necesita una potencia de 2 de equipos (4, 8, 16, 32, 64, 128…).';
+            }
+            return 'Este formato necesita al menos ' . $rules['min_teams'] . ' equipos.';
+        }
+
+        if (!empty($rules['power_of_two']) && !self::esPotenciaDeDos($teams)) {
+            if ($api === 'grupos') {
+                return 'Fase de grupos se arma con grupos de 4 y 2 clasificados por grupo: usa 8, 16, 32, 64… equipos.';
+            }
+            return 'Este formato necesita una cantidad de equipos potencia de 2 (4, 8, 16, 32, 64, 128…).';
+        }
+
+        return null;
     }
 }
